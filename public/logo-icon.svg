@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="9 6 46 61" width="46" height="61" role="img" aria-labelledby="cj-logo-title">
+  <title id="cj-logo-title">CastJournal</title>
+  <circle cx="34" cy="14" r="5" fill="none" stroke="#1F4B3F" stroke-width="5"/>
+  <path d="M34 19 C 30 26, 20 30, 20 40 C 20 50, 30 54, 38 48 C 44 44, 42 36, 35 38"
+        fill="none" stroke="#1F4B3F" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M12 56 Q 32 64 52 56" fill="none" stroke="#3A7CA5" stroke-width="3.2" stroke-linecap="round"/>
+</svg>
