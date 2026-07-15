@@ -50,10 +50,12 @@ public/boat.jpg
 public/dakak.jpg
 public/favicon-192.png
 public/fishing_rod.jpg
+public/fly.jpg
 public/icons.svg
 public/logo-icon.png
 public/logo-icon.svg
 public/logo-lockup-web.png
+public/pin.jpg
 public/rod_with_catch.jpg
 public/sunset.jpg
 public/two_rods.jpg
@@ -143,11 +145,20 @@ src/utils/mediaUrl.ts
 tsconfig.app.json
 tsconfig.json
 tsconfig.node.json
+vercel.json
 vite.config.ts
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="vercel.json">
+{
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
+</file>
 
 <file path=".gitignore">
 # Logs
@@ -893,9 +904,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 
 // Add real photo paths here later, e.g. '/images/auth/lake-sunrise.jpg' — 2+ enables the slideshow.
 const SLIDES: string[] = [
-    '/sunset.jpg',
-     '/dakak.jpg',
-      '/boat.jpg'
+    '/dakak.jpg',
+  
     
 ];
 
@@ -1603,7 +1613,7 @@ export function Sidebar() {
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      'flex items-center gap-2.5 px-2 py-2 text-sm transition-colors rounded-md',
+      'flex items-center gap-5 px-2 py-2 text-sm transition-colors rounded-md',
       collapsed && 'justify-center px-0',
       isActive ? 'bg-accent/15 text-foreground font-medium' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
     );
@@ -1617,10 +1627,10 @@ export function Sidebar() {
     >
       <Link
         to="/"
-        className={cn('wordmark mb-6 flex items-center gap-1.5 px-2', collapsed && 'justify-center px-0')}
+        className={cn('wordmark mb-8 flex items-center gap-2.5 px-2 text-2xl', collapsed && 'justify-center px-0')}
         title="CastJournal"
       >
-        <img src="/logo-icon.svg" alt="" className="h-7 w-auto shrink-0" />
+        <img src="/logo-icon.svg" alt="" className="h-10 w-auto shrink-0" />
         {!collapsed && 'CastJournal'}
       </Link>
 
@@ -2951,7 +2961,7 @@ export function useNotifications() {
   --gradient-page: linear-gradient(
     160deg,
     var(--color-paper) 0%,
-    color-mix(in oklab, var(--color-paper), var(--color-river) 10%) 45%,
+    color-mix(in oklab, var(--color-paper), var(--color-river) 10%) 5%,
     color-mix(in oklab, var(--color-paper), var(--color-brass) 8%) 100%
   );
 
@@ -5080,7 +5090,7 @@ const features = [
 // per-tile via the className below — add, remove, or reposition as needed.
 // Each needs its own placement so they don't overlap the centered copy.
 const HERO_POLAROIDS = [
-  { src: '/fishing_rod.jpg', alt: "Fishing rod at the water's edge", className: '-left-4 top-6 w-40 -rotate-6 hidden lg:block' },
+  { src: '/sunset.jpg', alt: "Fishing rod at the water's edge", className: '-left-4 top-6 w-40 -rotate-6 hidden lg:block' },
   { src: '/rod_with_catch.jpg', alt: 'A rod bent with a catch', className: '-right-2 top-24 w-44 rotate-3 hidden lg:block' },
   { src: '/two_rods.jpg', alt: 'Two rods set up on the bank', className: 'left-10 bottom-0 w-36 rotate-2 hidden xl:block' },
 ];
@@ -5132,28 +5142,28 @@ export function LandingPage() {
             <Link to="/login"><Button size="lg" variant="outline">Log in</Button></Link>
           </div>
         </div>
-      </section>
+    
 
-      <section className="mx-auto max-w-5xl px-6 pb-24">
-        <div className="text-center">
-          <h2 className="font-heading text-2xl">Built for the whole trip, not just the highlight reel</h2>
-          <CastDivider />
-        </div>
-        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {features.map(({ icon: Icon, title, body }) => (
-            <Card key={title}>
-              <CardContent>
-                <Icon className="size-6 text-primary" />
-                <h3 className="mt-3 font-heading text-base">{title}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{body}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      <footer className="border-t border-border px-6 py-8 text-center text-sm text-muted-foreground">
-        © {new Date().getFullYear()} CastJournal
+        <section className="mx-auto max-w-5xl px-6 pt-24">
+          <div className="text-center">
+            <h2 className="font-heading text-2xl">"The river doesn't repeat itself. Neither does a good log."</h2>
+            <CastDivider />
+          </div>
+          <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {features.map(({ icon: Icon, title, body }) => (
+              <Card key={title}>
+                <CardContent>
+                  <Icon className="size-6 text-primary" />
+                  <h3 className="mt-3 font-heading text-base">{title}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{body}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </section>
+      </section>       
+      <footer className="border-t border-border py-5 text-center text-sm text-muted-foreground">
+        © {new Date().getFullYear()} CastJournal by Clrns V
       </footer>
     </div>
   );
