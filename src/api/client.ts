@@ -1,7 +1,5 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-// Set once by AuthContext on mount — avoids a circular import between
-// the plain-JS api client and the React auth context.
 let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(handler: () => void) {
   onUnauthorized = handler;
@@ -12,15 +10,58 @@ export function setTokenGetter(fn: () => string | null) {
   getToken = fn;
 }
 
+let getRefreshToken: () => string | null = () => null;
+export function setRefreshTokenGetter(fn: () => string | null) {
+  getRefreshToken = fn;
+}
+
+// Called after a successful silent refresh so AuthContext can persist
+// the new pair and update its state — client.ts doesn't own storage.
+let onTokenRefreshed: ((token: string, refreshToken: string) => void) | null = null;
+export function setTokenRefreshedHandler(handler: (token: string, refreshToken: string) => void) {
+  onTokenRefreshed = handler;
+}
+
 interface ApiError {
   status: number;
   message: string;
   details?: unknown;
 }
 
+// Coalesces concurrent 401s into a single refresh call instead of firing
+// one per in-flight request.
+let refreshPromise: Promise<string | null> | null = null;
+
+async function tryRefreshToken(): Promise<string | null> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return null;
+
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        onTokenRefreshed?.(data.token, data.refreshToken);
+        return data.token as string;
+      } catch {
+        return null;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+  }
+  return refreshPromise;
+}
+
 async function request<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  isRetry = false
 ): Promise<T> {
   const token = getToken();
 
@@ -36,6 +77,12 @@ async function request<T>(
   });
 
   if (response.status === 401) {
+    if (!isRetry) {
+      const newToken = await tryRefreshToken();
+      if (newToken) {
+        return request<T>(path, options, true);
+      }
+    }
     onUnauthorized?.();
     const error: ApiError = { status: 401, message: 'Session expired. Please log in again.' };
     throw error;
@@ -49,8 +96,6 @@ async function request<T>(
   const body = isJson ? await response.json() : await response.text();
 
   if (!response.ok) {
-    // Matches your ExceptionHandlingMiddleware's { title, status } shape,
-    // and ASP.NET's default { errors: {...} } validation shape.
     const message =
       body?.title ??
       (body?.errors ? Object.values(body.errors).flat().join(' ') : null) ??
@@ -72,9 +117,8 @@ export const api = {
     request<T>(path, { method: 'PATCH', body: data ? JSON.stringify(data) : undefined }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
-// For file uploads (media, avatar) — multipart, no Content-Type header
-// (the browser sets the correct boundary automatically).
-export async function uploadFile<T>(path: string, formData: FormData): Promise<T> {
+
+export async function uploadFile<T>(path: string, formData: FormData, isRetry = false): Promise<T> {
   const token = getToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
@@ -83,6 +127,10 @@ export async function uploadFile<T>(path: string, formData: FormData): Promise<T
   });
 
   if (response.status === 401) {
+    if (!isRetry) {
+      const newToken = await tryRefreshToken();
+      if (newToken) return uploadFile<T>(path, formData, true);
+    }
     onUnauthorized?.();
     throw { status: 401, message: 'Session expired.' } as ApiError;
   }
@@ -95,13 +143,17 @@ export async function uploadFile<T>(path: string, formData: FormData): Promise<T
   return response.status === 204 ? (undefined as T) : response.json();
 }
 
-export async function downloadFile(path: string): Promise<{ blob: Blob; fileName: string }> {
+export async function downloadFile(path: string, isRetry = false): Promise<{ blob: Blob; fileName: string }> {
   const token = getToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
 
   if (response.status === 401) {
+    if (!isRetry) {
+      const newToken = await tryRefreshToken();
+      if (newToken) return downloadFile(path, true);
+    }
     onUnauthorized?.();
     throw { status: 401, message: 'Session expired.' } as ApiError;
   }
@@ -110,7 +162,6 @@ export async function downloadFile(path: string): Promise<{ blob: Blob; fileName
     throw { status: response.status, message: 'Export failed.' } as ApiError;
   }
 
-  // Extract filename from Content-Disposition if present, e.g. attachment; filename="x.csv"
   const disposition = response.headers.get('content-disposition');
   const match = disposition?.match(/filename="?([^"]+)"?/);
   const fileName = match?.[1] ?? 'export';

@@ -23,3 +23,12 @@ export interface CurrentUser {
   fullName: string | null;
   roles: string[];
 }
+
+export interface AuthResponse {
+  token: string;
+  refreshToken: string;
+  userId: string;
+  email: string;
+  fullName: string | null;
+  expiration: string;
+}
