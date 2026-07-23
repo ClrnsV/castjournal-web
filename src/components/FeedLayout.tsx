@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { FollowSidebar } from './FollowSidebar';
+import { SearchBar } from './SearchBar';
 
 export function FeedLayout() {
   return (
@@ -11,7 +12,16 @@ export function FeedLayout() {
           <Outlet />
         </div>
       </main>
-      <FollowSidebar />
+
+      <div className="hidden w-70 shrink-0 pr-6 pb-6 lg:block">
+        <div className="sticky top-0 flex max-h-[calc(100vh-1.5rem)] flex-col">
+          {/* Space above the search bar — nudge this value to taste */}
+          <div className="h-4" aria-hidden />
+          <SearchBar />
+          <div className="h-[45px]" aria-hidden />
+          <FollowSidebar />
+        </div>
+      </div>
     </div>
   );
 }

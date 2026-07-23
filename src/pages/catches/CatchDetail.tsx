@@ -8,6 +8,7 @@ import { CastDivider } from '../../components/CastDivider';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { CommentSection } from '../../components/CommentSection';
 
 export function CatchDetail() {
   const { id } = useParams();
@@ -111,6 +112,8 @@ export function CatchDetail() {
             <Heart className={liked ? 'fill-rust text-rust' : 'text-brass'} />
             {likeCount} likes
           </Button>
+
+          <CommentSection catchId={item.id} />
 
           {isOwner && (
             <div className="mt-4 flex gap-3">

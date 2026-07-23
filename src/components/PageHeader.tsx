@@ -20,7 +20,7 @@ export function PageHeader({
 }) {
   return (
     <div
-      className="sticky top-0 z-10 -mx-6 -mt-8 border-b border-border px-6 pt-8 pb-4 backdrop-blur-sm"
+      className="sticky top-0 z-10 -mx-6 -mt-8 border-b rounded-2xl border-border px-6 pt-8 pb-4 backdrop-blur-sm"
       style={{ backgroundColor: 'color-mix(in oklab, var(--color-paper) 92%, transparent)' }}
     >
       <div className="flex items-start justify-between gap-4">

@@ -91,8 +91,7 @@ export function FollowSidebar() {
   };
 
   return (
-    <aside className="sticky top-24 hidden max-h-[calc(100vh-7rem)] w-70 shrink-0 flex-col overflow-y-auto rounded-2xl border border-border bg-card p-4 lg:flex">
-      <div className="mb-3 flex gap-1 rounded-full bg-muted p-1 text-sm">
+        <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-2xl border border-border bg-card p-4">      <div className="mb-3 flex gap-1 rounded-full bg-muted p-1 text-sm">
         <button
           onClick={() => setTab('following')}
           className={`flex-1 rounded-full py-1.5 font-medium transition-colors ${
