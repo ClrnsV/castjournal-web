@@ -76,17 +76,19 @@ async function request<T>(
     headers,
   });
 
-  if (response.status === 401) {
-    if (!isRetry) {
-      const newToken = await tryRefreshToken();
-      if (newToken) {
-        return request<T>(path, options, true);
-      }
-    }
-    onUnauthorized?.();
-    const error: ApiError = { status: 401, message: 'Session expired. Please log in again.' };
-    throw error;
+if (response.status === 401) {
+  const isAuthEndpoint = path === '/auth/login' || path === '/auth/register';
+  if (!isRetry && !isAuthEndpoint) {
+    const newToken = await tryRefreshToken();
+    if (newToken) return request<T>(path, options, true);
   }
+  if (isAuthEndpoint) {
+    const body = await response.json().catch(() => null);
+    throw { status: 401, message: body?.title ?? 'Invalid email or password.', details: body } as ApiError;
+  }
+  onUnauthorized?.();
+  throw { status: 401, message: 'Session expired. Please log in again.' } as ApiError;
+}
 
   if (response.status === 204) {
     return undefined as T;
