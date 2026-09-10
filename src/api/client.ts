@@ -28,6 +28,28 @@ interface ApiError {
   details?: unknown;
 }
 
+// Endpoints where a 401 means "this specific request failed" (bad credentials,
+// dead refresh token) rather than "your session died" — so skip the refresh
+// dance and never trigger the global sign-out flow for these.
+const NO_REFRESH_PATHS = ['/auth/login', '/auth/register', '/auth/refresh'];
+
+// Some endpoints (e.g. AuthController's `Unauthorized("...")` returns) send a
+// bare JSON string, not `{ title: "..." }` — handle both shapes so messages
+// like "This account has been deactivated" actually reach the UI instead of
+// silently falling back to a generic one.
+async function parseErrorMessage(response: Response, fallback: string): Promise<{ message: string; details: unknown }> {
+  const body = await response.json().catch(() => null);
+
+  if (typeof body === 'string') return { message: body, details: body };
+
+  const message =
+    body?.title ??
+    (body?.errors ? Object.values(body.errors).flat().join(' ') : null) ??
+    fallback;
+
+  return { message, details: body };
+}
+
 // Coalesces concurrent 401s into a single refresh call instead of firing
 // one per in-flight request.
 let refreshPromise: Promise<string | null> | null = null;
@@ -76,36 +98,37 @@ async function request<T>(
     headers,
   });
 
-if (response.status === 401) {
-  const isAuthEndpoint = path === '/auth/login' || path === '/auth/register';
-  if (!isRetry && !isAuthEndpoint) {
-    const newToken = await tryRefreshToken();
-    if (newToken) return request<T>(path, options, true);
+  if (response.status === 401) {
+    const isNoRefreshPath = NO_REFRESH_PATHS.includes(path);
+
+    if (!isRetry && !isNoRefreshPath) {
+      const newToken = await tryRefreshToken();
+      if (newToken) return request<T>(path, options, true);
+    }
+
+    if (isNoRefreshPath) {
+      const { message, details } = await parseErrorMessage(response, 'Invalid email or password.');
+      throw { status: 401, message, details } as ApiError;
+    }
+
+    onUnauthorized?.();
+    throw { status: 401, message: 'Session expired. Please log in again.' } as ApiError;
   }
-  if (isAuthEndpoint) {
-    const body = await response.json().catch(() => null);
-    throw { status: 401, message: body?.title ?? 'Invalid email or password.', details: body } as ApiError;
-  }
-  onUnauthorized?.();
-  throw { status: 401, message: 'Session expired. Please log in again.' } as ApiError;
-}
 
   if (response.status === 204) {
     return undefined as T;
   }
 
   const isJson = response.headers.get('content-type')?.includes('application/json');
-  const body = isJson ? await response.json() : await response.text();
 
   if (!response.ok) {
-    const message =
-      body?.title ??
-      (body?.errors ? Object.values(body.errors).flat().join(' ') : null) ??
-      'Something went wrong.';
-    const error: ApiError = { status: response.status, message, details: body };
-    throw error;
+    const { message, details } = isJson
+      ? await parseErrorMessage(response, 'Something went wrong.')
+      : { message: await response.text().catch(() => 'Something went wrong.'), details: null };
+    throw { status: response.status, message, details } as ApiError;
   }
 
+  const body = isJson ? await response.json() : await response.text();
   return body as T;
 }
 
@@ -138,8 +161,8 @@ export async function uploadFile<T>(path: string, formData: FormData, isRetry = 
   }
 
   if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw { status: response.status, message: body?.title ?? 'Upload failed.', details: body } as ApiError;
+    const { message, details } = await parseErrorMessage(response, 'Upload failed.');
+    throw { status: response.status, message, details } as ApiError;
   }
 
   return response.status === 204 ? (undefined as T) : response.json();
@@ -161,7 +184,8 @@ export async function downloadFile(path: string, isRetry = false): Promise<{ blo
   }
 
   if (!response.ok) {
-    throw { status: response.status, message: 'Export failed.' } as ApiError;
+    const { message, details } = await parseErrorMessage(response, 'Export failed.');
+    throw { status: response.status, message, details } as ApiError;
   }
 
   const disposition = response.headers.get('content-disposition');

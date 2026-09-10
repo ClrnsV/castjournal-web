@@ -16,5 +16,7 @@ export interface AuthContextValue {
   logout: () => void;
   sessionExpiredMessage: string | null;
   clearSessionExpiredMessage: () => void;
+  forgotPassword: (email: string) => Promise<void>;
+  resetPassword: (email: string, token: string, newPassword: string) => Promise<void>;
 }
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined);

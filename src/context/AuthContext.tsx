@@ -103,6 +103,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearSession(false);
   };
 
+  const forgotPassword = async (email: string) => {
+  await api.post('/auth/forgot-password', { email });
+  };
+
+  const resetPassword = async (email: string, token: string, newPassword: string) => {
+  await api.post('/auth/reset-password', { email, token, newPassword });
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -113,6 +121,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         sessionExpiredMessage,
         clearSessionExpiredMessage: () => setSessionExpiredMessage(null),
+        forgotPassword,
+        resetPassword,
       }}
     >
       {children}

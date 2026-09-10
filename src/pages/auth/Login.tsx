@@ -97,6 +97,12 @@ export function Login() {
                 )}
               />
 
+              <p className="text-right text-sm">
+                <Link to="/forgot-password" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
+                  Forgot password?
+                </Link>
+              </p>
+
               {form.formState.errors.root && (
                 <p className="text-sm text-destructive" role="alert">
                   {form.formState.errors.root.message}
