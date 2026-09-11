@@ -96,16 +96,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     applyAuthResponse(res);
   };
 
-  const logout = async () => {
-    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-    try {
-      await api.post('/auth/logout', { refreshToken: refreshToken ?? '' });
-    } catch {
-      // Best effort — clear the local session regardless of whether the
-      // server call succeeded (e.g. token already expired).
-    }
-    clearSession(false);
-  };
+ const logout = async () => {
+  const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+  try {
+    await api.post('/auth/logout', { refreshToken: refreshToken ?? '' });
+  } catch {
+    // Best effort — clear the local session regardless of whether the
+    // server call succeeded (e.g. token already expired).
+  }
+  // Tell Google's library to forget the cached account choice, so the
+  // next sign-in shows the picker instead of silently continuing as
+  // whoever was last signed in.
+  window.google?.accounts.id.disableAutoSelect();
+  clearSession(false);
+};
 
   const forgotPassword = async (email: string) => {
   await api.post('/auth/forgot-password', { email });
