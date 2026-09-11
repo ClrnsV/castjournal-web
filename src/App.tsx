@@ -24,6 +24,7 @@ import { FeedLayout } from './components/FeedLayout';
 import { LandingPage } from './pages/landing/LandingPage';
 import { ForgotPassword } from './pages/auth/ForgotPassword';
 import { ResetPassword } from './pages/auth/ResetPassword';
+import { PrivacyPolicy } from './pages/PrivacyPolicy';
 
 
 
@@ -58,6 +59,8 @@ function App() {
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/export" element={<ExportPage />} />
+
+           <Route path="/privacy" element={<PrivacyPolicy />} />
 
           <Route element={<AdminRoute />}>
             <Route path="/admin" element={<AdminLayout />}>
