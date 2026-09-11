@@ -79,6 +79,7 @@ src/api/species.ts
 src/App.tsx
 src/components/AdminRoute.tsx
 src/components/auth/AuthLayout.tsx
+src/components/auth/GoogleSignInButton.tsx
 src/components/CastDivider.tsx
 src/components/CatchCard.tsx
 src/components/CatchCardSkeleton.tsx
@@ -124,8 +125,10 @@ src/pages/admin/ManageSpecies.tsx
 src/pages/admin/ManageUsers.tsx
 src/pages/admin/SystemReports.tsx
 src/pages/analytics/Analytics.tsx
+src/pages/auth/ForgotPassword.tsx
 src/pages/auth/Login.tsx
 src/pages/auth/Register.tsx
+src/pages/auth/ResetPassword.tsx
 src/pages/catches/CatchDetail.tsx
 src/pages/catches/CatchForm.tsx
 src/pages/catches/MyCatches.tsx
@@ -143,6 +146,7 @@ src/types/catch.ts
 src/types/comment.ts
 src/types/export.ts
 src/types/follow.ts
+src/types/google.d.ts
 src/types/location.ts
 src/types/notification.ts
 src/types/profile.ts
@@ -159,561 +163,114 @@ vite.config.ts
 <files>
 This section contains the contents of the repository's files.
 
-<file path="src/api/comments.ts">
-import { api } from './client';
-import type { Comment } from '../types/comment';
-import type { PagedResult } from '../types/catch';
+<file path="src/components/auth/GoogleSignInButton.tsx">
+import { useEffect, useRef } from 'react';
+import { useAuth } from '../../context/useAuth';
 
-export const commentsApi = {
-  getForCatch: (catchId: string, page = 1, pageSize = 20) =>
-    api.get<PagedResult<Comment>>(`/catches/${catchId}/comments?page=${page}&pageSize=${pageSize}`),
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 
-  add: (catchId: string, content: string) =>
-    api.post<Comment>(`/catches/${catchId}/comments`, { content }),
-
-  update: (catchId: string, commentId: string, content: string) =>
-    api.put<void>(`/catches/${catchId}/comments/${commentId}`, { content }),
-
-  remove: (catchId: string, commentId: string) =>
-    api.delete<void>(`/catches/${catchId}/comments/${commentId}`),
-};
-</file>
-
-<file path="src/api/search.ts">
-import { api } from './client';
-import type { SearchResults, SearchScope } from '../types/search';
-
-export const searchApi = {
-  search: (query: string, type: SearchScope = 'all', page = 1, pageSize = 20) =>
-    api.get<SearchResults>(
-      `/search?query=${encodeURIComponent(query)}&type=${type}&page=${page}&pageSize=${pageSize}`
-    ),
-};
-</file>
-
-<file path="src/components/CommentSection.tsx">
-import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { commentsApi } from '../api/comments';
-import type { Comment } from '../types/comment';
-import { resolveMediaUrl } from '../utils/mediaUrl';
-import { Button } from './ui/button';
-import { Textarea } from './ui/textarea';
-
-function CommentRow({
-  comment,
-  onUpdated,
-  onDeleted,
-}: {
-  comment: Comment;
-  onUpdated: (updated: Comment) => void;
-  onDeleted: (id: string) => void;
-}) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState(comment.content);
-  const [busy, setBusy] = useState(false);
-
-  const saveEdit = async () => {
-    if (!draft.trim() || busy) return;
-    setBusy(true);
-    try {
-      await commentsApi.update(comment.catchId, comment.id, draft.trim());
-      onUpdated({ ...comment, content: draft.trim(), editedAt: new Date().toISOString() });
-      setIsEditing(false);
-    } catch {
-      toast.error("Couldn't save your edit — try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const remove = async () => {
-    if (busy || !confirm('Delete this comment?')) return;
-    setBusy(true);
-    try {
-      await commentsApi.remove(comment.catchId, comment.id);
-      onDeleted(comment.id);
-    } catch {
-      toast.error("Couldn't delete this comment — try again.");
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="flex gap-2.5 py-3">
-      {comment.userAvatarUrl ? (
-        <img
-          src={resolveMediaUrl(comment.userAvatarUrl)}
-          alt=""
-          className="size-8 shrink-0 rounded-full object-cover"
-        />
-      ) : (
-        <div className="size-8 shrink-0 rounded-full bg-muted" />
-      )}
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <span className="text-sm font-medium">{comment.userFullName ?? 'Angler'}</span>
-          <span className="text-xs text-muted-foreground">
-            {new Date(comment.createdAt).toLocaleDateString()}
-            {comment.editedAt ? ' · edited' : ''}
-          </span>
-        </div>
-
-        {isEditing ? (
-          <div className="mt-1.5 flex flex-col gap-2">
-            <Textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              rows={2}
-              className="text-sm"
-            />
-            <div className="flex gap-2">
-              <Button size="sm" disabled={busy} onClick={saveEdit}>Save</Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy}
-                onClick={() => {
-                  setDraft(comment.content);
-                  setIsEditing(false);
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <p className="mt-0.5 text-sm">{comment.content}</p>
-        )}
-
-        {comment.isOwnedByCurrentUser && !isEditing && (
-          <div className="mt-1 flex gap-3 text-xs text-muted-foreground">
-            <button onClick={() => setIsEditing(true)} className="hover:text-foreground">Edit</button>
-            <button onClick={remove} className="hover:text-destructive">Delete</button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+interface GoogleSignInButtonProps {
+  onError?: (message: string) => void;
+  text?: 'signin_with' | 'signup_with';
 }
 
-export function CommentSection({ catchId }: { catchId: string }) {
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [newComment, setNewComment] = useState('');
-  const [posting, setPosting] = useState(false);
+export function GoogleSignInButton({ onError, text = 'signin_with' }: GoogleSignInButtonProps) {
+  const { googleLogin } = useAuth();
+  const buttonRef = useRef<HTMLDivElement>(null);
+  const hasInitialized = useRef(false);   // add this guard
 
   useEffect(() => {
-    let cancelled = false;
+    if (hasInitialized.current) return;   // add this early-return
 
-    async function load() {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const res = await commentsApi.getForCatch(catchId);
-        if (!cancelled) setComments(res.items);
-      } catch {
-        if (!cancelled) setError("Couldn't load comments.");
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [catchId]);
-
-  const submit = async () => {
-    const content = newComment.trim();
-    if (!content || posting) return;
-    setPosting(true);
-    try {
-      const created = await commentsApi.add(catchId, content);
-      setComments((prev) => [...prev, created]);
-      setNewComment('');
-    } catch {
-      toast.error("Couldn't post your comment — try again.");
-    } finally {
-      setPosting(false);
-    }
-  };
-
-  const handleUpdated = (updated: Comment) => {
-    setComments((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-  };
-
-  const handleDeleted = (id: string) => {
-    setComments((prev) => prev.filter((c) => c.id !== id));
-  };
-
-  return (
-    <div className="mt-6">
-      <h2 className="font-heading text-lg">Comments {comments.length > 0 && `(${comments.length})`}</h2>
-
-      <div className="mt-2 flex gap-2">
-        <Textarea
-          value={newComment}
-          onChange={(e) => setNewComment(e.target.value)}
-          placeholder="Add a comment..."
-          rows={2}
-          className="text-sm"
-        />
-        <Button onClick={submit} disabled={posting || !newComment.trim()} className="shrink-0 self-end">
-          Post
-        </Button>
-      </div>
-
-      {isLoading && <p className="py-4 text-center text-sm text-muted-foreground">Loading…</p>}
-      {error && <p className="py-4 text-center text-sm text-destructive">{error}</p>}
-      {!isLoading && !error && comments.length === 0 && (
-        <p className="py-4 text-center text-sm text-muted-foreground">No comments yet — be the first.</p>
-      )}
-
-      <div className="divide-y divide-border">
-        {comments.map((c) => (
-          <CommentRow key={c.id} comment={c} onUpdated={handleUpdated} onDeleted={handleDeleted} />
-        ))}
-      </div>
-    </div>
-  );
-}
-</file>
-
-<file path="src/components/PostDialog.tsx">
-import type { Catch } from '../types/catch';
-import { resolveMediaUrl } from '../utils/mediaUrl';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Heart } from 'lucide-react';
-import { CommentSection } from './CommentSection';
-
-export function PostDialog({
-  item,
-  open,
-  onOpenChange,
-  liked,
-  likeCount,
-  onToggleLike,
-  busy,
-}: {
-  item: Catch;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  liked: boolean;
-  likeCount: number;
-  onToggleLike: () => void;
-  busy: boolean;
-}) {
-  const photo = item.media[0];
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-3xl max-h-[87vh] overflow-y-auto rounded-2xl">
-            <div className="flex items-center gap-2">
-            {item.userAvatarUrl ? (
-                <img src={resolveMediaUrl(item.userAvatarUrl)} alt="" className="w-8 h-8 rounded-full object-cover" />
-            ) : (
-                <div className="w-8 h-8 rounded-full bg-muted" />
-            )}
-            <strong className="text-sm">{item.userFullName ?? 'Angler'}</strong>
-            </div>
-
-            {photo && (
-            <img
-                src={resolveMediaUrl(photo.mediaUrl)}
-                alt={item.speciesName ?? 'Catch photo'}
-                className="w-full h-auto max-h-[32rem] object-contain rounded-lg bg-muted"
-            />
-            )}
-
-            <div>
-            <strong className="text-base">{item.speciesName ?? 'Unknown species'}</strong>
-            {item.locationName && (
-                <div className="text-mono text-sm text-muted-foreground">{item.locationName}</div>
-            )}
-            </div>
-
-            <Button
-            variant="ghost"
-            size="sm"
-            onClick={onToggleLike}
-            disabled={busy}
-            className={`w-fit px-2 -ml-2 ${liked ? 'text-destructive' : 'text-muted-foreground'} hover:text-destructive`}
-            >
-            <Heart className="size-4" fill={liked ? 'currentColor' : 'none'} />
-            {likeCount}
-            </Button>
-
-            <CommentSection catchId={item.id} />
-        </DialogContent>
-    </Dialog>
-  );
-}
-</file>
-
-<file path="src/components/SearchBar.tsx">
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
-import { Search, X, Fish } from 'lucide-react';
-import { searchApi } from '../api/search';
-import { followApi } from '../api/follow';
-import type { SearchResults, SearchScope } from '../types/search';
-import { resolveMediaUrl } from '../utils/mediaUrl';
-import { cn } from '@/lib/utils';
-
-const SCOPES: { value: SearchScope; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'users', label: 'Anglers' },
-  { value: 'catches', label: 'Catches' },
-];
-
-const EMPTY_PAGE = { items: [], totalCount: 0, page: 1, pageSize: 20, totalPages: 0 };
-const emptyResults = (): SearchResults => ({ users: { ...EMPTY_PAGE }, catches: { ...EMPTY_PAGE } });
-
-export function SearchBar() {
-  const navigate = useNavigate();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const requestIdRef = useRef(0);
-
-  const [query, setQuery] = useState('');
-  const [scope, setScope] = useState<SearchScope>('all');
-  const [results, setResults] = useState<SearchResults>(emptyResults());
-  const [isLoading, setIsLoading] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
-
-  // Close on outside click — a genuine external-event subscription, so an effect is right here.
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, []);
-
-  // Clear any pending debounce on unmount.
-  useEffect(() => () => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-  }, []);
-
-  // Triggered directly from the input's onChange / the tab buttons' onClick —
-  // not from an effect — since this is "responding to an event", not syncing with an external system.
-  function runSearch(term: string, nextScope: SearchScope) {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    const trimmed = term.trim();
-    if (trimmed.length < 2) {
-      setIsLoading(false);
+    if (!GOOGLE_CLIENT_ID) {
+      console.error('VITE_GOOGLE_CLIENT_ID is not set.');
       return;
     }
 
-    const thisRequestId = ++requestIdRef.current;
-    setIsLoading(true);
+    let cancelled = false;
+    let pollId: ReturnType<typeof setInterval> | undefined;
 
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const res = await searchApi.search(trimmed, nextScope);
-        if (thisRequestId === requestIdRef.current) setResults(res);
-      } catch {
-        if (thisRequestId === requestIdRef.current) setResults(emptyResults());
-      } finally {
-        if (thisRequestId === requestIdRef.current) setIsLoading(false);
-      }
-    }, 300);
-  }
+    const renderButton = () => {
+      if (cancelled || !window.google || !buttonRef.current) return;
+      hasInitialized.current = true;      // add this, right before initializing
 
-  const handleQueryChange = (value: string) => {
-    setQuery(value);
-    runSearch(value, scope);
-  };
-
-  const handleScopeChange = (next: SearchScope) => {
-    setScope(next);
-    runSearch(query, next);
-  };
-
-  const clear = () => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    requestIdRef.current++; // invalidate any in-flight request
-    setQuery('');
-    setResults(emptyResults());
-    setIsLoading(false);
-  };
-
-  const users = results.users.items;
-  const catches = results.catches.items;
-  const hasQuery = query.trim().length >= 2;
-  const hasResults = users.length > 0 || catches.length > 0;
-
-  const goTo = (path: string) => {
-    setIsOpen(false);
-    clear();
-    navigate(path);
-  };
-
-  const toggleFollow = async (userId: string, isFollowing: boolean) => {
-    try {
-      if (isFollowing) await followApi.unfollow(userId);
-      else await followApi.follow(userId);
-      setResults((prev) => ({
-        ...prev,
-        users: {
-          ...prev.users,
-          items: prev.users.items.map((u) =>
-            u.id === userId ? { ...u, isFollowedByCurrentUser: !isFollowing } : u
-          ),
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: async (response) => {
+          try {
+            await googleLogin(response.credential);
+          } catch (err) {
+            const message =
+              err && typeof err === 'object' && 'message' in err
+                ? String((err as { message: unknown }).message)
+                : 'Google sign-in failed. Please try again.';
+            onError?.(message);
+          }
         },
-      }));
-    } catch {
-      toast.error(isFollowing ? "Couldn't unfollow — try again." : "Couldn't follow — try again.");
+      });
+
+      window.google.accounts.id.renderButton(buttonRef.current, {
+        type: 'standard',
+        theme: 'outline',
+        size: 'large',
+        text,
+        shape: 'rectangular',
+        width: 320,
+      });
+    };
+
+    if (window.google) {
+      renderButton();
+    } else {
+      pollId = setInterval(() => {
+        if (window.google) {
+          if (pollId) clearInterval(pollId);
+          renderButton();
+        }
+      }, 100);
     }
-  };
 
-  return (
-    <div ref={containerRef} className="relative shrink-0">
-      <div className="flex items-center gap-2 rounded-full bg-muted px-3.5 py-2">
-        <Search className="size-4 shrink-0 text-muted-foreground" />
-        <input
-          value={query}
-          onChange={(e) => handleQueryChange(e.target.value)}
-          onFocus={() => setIsOpen(true)}
-          placeholder="Search anglers & catches"
-          className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-        />
-        {query && (
-          <button onClick={clear} aria-label="Clear search" className="shrink-0 text-muted-foreground hover:text-foreground">
-            <X className="size-3.5" />
-          </button>
-        )}
-      </div>
+    return () => {
+      cancelled = true;
+      if (pollId) clearInterval(pollId);
+    };
+  }, [googleLogin, onError, text]);
 
-      {isOpen && hasQuery && (
-        <div className="absolute top-[calc(100%+0.5rem)] left-0 z-20 flex max-h-[28rem] w-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-lg">
-          <div className="flex gap-1 border-b border-border p-2">
-            {SCOPES.map((s) => (
-              <button
-                key={s.value}
-                onClick={() => handleScopeChange(s.value)}
-                className={cn(
-                  'flex-1 rounded-full py-1.5 text-xs font-medium transition-colors',
-                  scope === s.value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60'
-                )}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="overflow-y-auto p-2">
-            {isLoading && <p className="py-4 text-center text-sm text-muted-foreground">Searching…</p>}
-
-            {!isLoading && !hasResults && (
-              <p className="py-4 text-center text-sm text-muted-foreground">No results for "{query.trim()}"</p>
-            )}
-
-            {!isLoading && (scope === 'all' || scope === 'users') && users.length > 0 && (
-              <div className="mb-2">
-                {scope === 'all' && (
-                  <p className="px-2 pb-1 text-xs tracking-widest text-muted-foreground uppercase">Anglers</p>
-                )}
-                {users.map((u) => (
-                  <div key={u.id} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-muted">
-                    <button onClick={() => goTo(`/anglers/${u.id}`)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
-                      {u.avatarUrl ? (
-                        <img src={resolveMediaUrl(u.avatarUrl)} alt="" className="size-8 shrink-0 rounded-full object-cover" />
-                      ) : (
-                        <div className="size-8 shrink-0 rounded-full bg-muted" />
-                      )}
-                      <span className="truncate text-sm font-medium">{u.fullName ?? u.userName ?? 'Angler'}</span>
-                    </button>
-                    <button
-                      onClick={() => toggleFollow(u.id, u.isFollowedByCurrentUser)}
-                      className={cn(
-                        'shrink-0 rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
-                        u.isFollowedByCurrentUser
-                          ? 'border border-border text-foreground hover:bg-muted'
-                          : 'bg-primary text-primary-foreground hover:bg-primary/85'
-                      )}
-                    >
-                      {u.isFollowedByCurrentUser ? 'Following' : 'Follow'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {!isLoading && (scope === 'all' || scope === 'catches') && catches.length > 0 && (
-              <div>
-                {scope === 'all' && (
-                  <p className="px-2 pb-1 text-xs tracking-widest text-muted-foreground uppercase">Catches</p>
-                )}
-                {catches.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => goTo(`/catches/${c.id}`)}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-muted"
-                  >
-                    {c.media[0]?.mediaUrl ? (
-                      <img src={resolveMediaUrl(c.media[0].mediaUrl)} alt="" className="size-8 shrink-0 rounded-md object-cover" />
-                    ) : (
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                        <Fish className="size-4 text-muted-foreground" />
-                      </div>
-                    )}
-                    <span className="truncate text-sm">
-                      <span className="font-medium">{c.speciesName ?? 'Catch'}</span>
-                      {c.userFullName && <span className="text-muted-foreground"> · {c.userFullName}</span>}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return <div ref={buttonRef} />;
 }
 </file>
 
-<file path="src/types/comment.ts">
-export interface Comment {
-  id: string;
-  catchId: string;
-  userId: string;
-  userFullName: string | null;
-  userAvatarUrl: string | null;
-  content: string;
-  createdAt: string;
-  editedAt: string | null;
-  isOwnedByCurrentUser: boolean;
+<file path="src/types/google.d.ts">
+export {};
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: {
+            client_id: string;
+            callback: (response: { credential: string }) => void;
+            auto_select?: boolean;
+          }) => void;
+          renderButton: (
+            parent: HTMLElement,
+            options: {
+              type?: 'standard' | 'icon';
+              theme?: 'outline' | 'filled_blue' | 'filled_black';
+              size?: 'large' | 'medium' | 'small';
+              text?: 'signin_with' | 'signup_with' | 'continue_with' | 'signin';
+              shape?: 'rectangular' | 'pill' | 'circle' | 'square';
+              width?: number;
+            },
+          ) => void;
+          prompt: () => void;
+          disableAutoSelect: () => void;
+        };
+      };
+    };
+  }
 }
-</file>
-
-<file path="src/types/search.ts">
-import type { Catch, PagedResult } from './catch';
-
-export interface SearchUserResult {
-  id: string;
-  userName: string | null;
-  fullName: string | null;
-  avatarUrl: string | null;
-  isFollowedByCurrentUser: boolean;
-}
-
-export interface SearchResults {
-  users: PagedResult<SearchUserResult>;
-  catches: PagedResult<Catch>;
-}
-
-export type SearchScope = 'all' | 'users' | 'catches';
 </file>
 
 <file path=".gitignore">
@@ -741,6 +298,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+webUI.xml
+repomix-output.xml
 </file>
 
 <file path="components.json">
@@ -801,7 +360,7 @@ export default defineConfig([
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-<link rel="icon" type="image/svg+xml" href="/logo-icon.svg" />
+  <link rel="icon" type="image/svg+xml" href="/logo-icon.svg" />
   <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -811,6 +370,7 @@ export default defineConfig([
     href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,600;1,500;1,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
     rel="stylesheet"
   />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <title>CastJournal</title>
 </head>
   <body>
@@ -1141,6 +701,26 @@ export const catchesApi = {
 };
 </file>
 
+<file path="src/api/comments.ts">
+import { api } from './client';
+import type { Comment } from '../types/comment';
+import type { PagedResult } from '../types/catch';
+
+export const commentsApi = {
+  getForCatch: (catchId: string, page = 1, pageSize = 20) =>
+    api.get<PagedResult<Comment>>(`/catches/${catchId}/comments?page=${page}&pageSize=${pageSize}`),
+
+  add: (catchId: string, content: string) =>
+    api.post<Comment>(`/catches/${catchId}/comments`, { content }),
+
+  update: (catchId: string, commentId: string, content: string) =>
+    api.put<void>(`/catches/${catchId}/comments/${commentId}`, { content }),
+
+  remove: (catchId: string, commentId: string) =>
+    api.delete<void>(`/catches/${catchId}/comments/${commentId}`),
+};
+</file>
+
 <file path="src/api/export.ts">
 import { downloadFile } from './client';
 import type { ExportRequest } from '../types/export';
@@ -1234,6 +814,18 @@ export const profileApi = {
 };
 </file>
 
+<file path="src/api/search.ts">
+import { api } from './client';
+import type { SearchResults, SearchScope } from '../types/search';
+
+export const searchApi = {
+  search: (query: string, type: SearchScope = 'all', page = 1, pageSize = 20) =>
+    api.get<SearchResults>(
+      `/search?query=${encodeURIComponent(query)}&type=${type}&page=${page}&pageSize=${pageSize}`
+    ),
+};
+</file>
+
 <file path="src/api/species.ts">
 import { api } from './client';
 import type { Species } from '../types/species';
@@ -1241,83 +833,6 @@ import type { Species } from '../types/species';
 export const speciesApi = {
   getAll: () => api.get<Species[]>('/species'),
 };
-</file>
-
-<file path="src/App.tsx">
-import { Routes, Route } from 'react-router-dom';
-import { Layout } from './components/Layout';
-import { ProtectedRoute } from './components/ProtectedRoute';
-import { AdminRoute } from './components/AdminRoute';
-import { Login } from './pages/auth/Login';
-import { Register } from './pages/auth/Register';
-import { MyCatches } from './pages/catches/MyCatches';
-import { CatchForm } from './pages/catches/CatchForm';
-import { CatchDetail } from './pages/catches/CatchDetail';
-import { MyLocations } from './pages/locations/MyLocations';
-import { MyProfile } from './pages/profile/MyProfile';
-import { Feed } from './pages/feed/Feed';
-import { PublicProfile } from './pages/profile/PublicProfile';
-import { Notifications } from './pages/notifications/Notifications';
-import { Analytics } from './pages/analytics/Analytics';
-import { ExportPage } from './pages/export/ExportPage';
-import { AdminLayout } from './pages/admin/AdminLayout';
-import { ManageUsers } from './pages/admin/ManageUsers';
-import { ManageSpecies } from './pages/admin/ManageSpecies';
-import { SystemReports } from './pages/admin/SystemReports';
-import { AuditLogs } from './pages/admin/AuditLogs';
-import { Backup } from './pages/admin/Backup';
-import { FeedLayout } from './components/FeedLayout';
-import { LandingPage } from './pages/landing/LandingPage';
-
-
-
-
-function App() {
-  return (
-   <Routes>
-       <Route path="/" element={<LandingPage />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
-
-      <Route element={<ProtectedRoute />}>
-        {/* Feed gets the wider shell */}
-        <Route element={<FeedLayout />}>
-          <Route path="/" element={<Feed />} />
-          <Route path="/feed" element={<Feed />} />
-        </Route>
-
-        {/* Everything else keeps the narrow shell */}
-        <Route element={<Layout />}>
-          <Route path="/catches" element={<MyCatches />} />
-          <Route path="/catches/new" element={<CatchForm />} />
-          <Route path="/catches/:id" element={<CatchDetail />} />
-          <Route path="/catches/:id/edit" element={<CatchForm />} />
-
-          <Route path="/locations" element={<MyLocations />} />
-          <Route path="/profile" element={<MyProfile />} />
-          <Route path="/anglers/:userId" element={<PublicProfile />} />
-
-          <Route path="/notifications" element={<Notifications />} />
-          <Route path="/analytics" element={<Analytics />} />
-          <Route path="/export" element={<ExportPage />} />
-
-          <Route element={<AdminRoute />}>
-            <Route path="/admin" element={<AdminLayout />}>
-              <Route index element={<ManageUsers />} />
-              <Route path="users" element={<ManageUsers />} />
-              <Route path="species" element={<ManageSpecies />} />
-              <Route path="reports" element={<SystemReports />} />
-              <Route path="audit-logs" element={<AuditLogs />} />
-              <Route path="backup" element={<Backup />} />
-            </Route>
-          </Route>
-        </Route>
-      </Route>
-    </Routes>
-  );
-}
-
-export default App;
 </file>
 
 <file path="src/components/AdminRoute.tsx">
@@ -1420,152 +935,6 @@ export function CastDivider() {
 }
 </file>
 
-<file path="src/components/CatchCard.tsx">
-import { Link } from 'react-router-dom';
-import { useState } from 'react';
-import { Heart, MessageCircle } from 'lucide-react';
-import { toast } from 'sonner';
-import { formatDistanceToNow } from 'date-fns';
-import type { Catch } from '../types/catch';
-import { catchesApi } from '../api/catches';
-import { resolveMediaUrl } from '../utils/mediaUrl';
-import { Card, CardContent } from './ui/card';
-import { Button } from './ui/button';
-import { PostDialog } from './PostDialog';
-
-function StatBox({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg bg-muted px-3 py-2">
-      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </div>
-      <div className="text-sm font-semibold text-foreground">{value}</div>
-    </div>
-  );
-}
-
-export function CatchCard({ item }: { item: Catch }) {
-  const [liked, setLiked] = useState(item.isLikedByCurrentUser);
-  const [likeCount, setLikeCount] = useState(item.likeCount);
-  const [busy, setBusy] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
-
-  const toggleLike = async () => {
-    if (busy) return;
-    setBusy(true);
-    const wasLiked = liked;
-    setLiked(!wasLiked);
-    setLikeCount((c) => c + (wasLiked ? -1 : 1));
-
-    try {
-      if (wasLiked) await catchesApi.unlike(item.id);
-      else await catchesApi.like(item.id);
-    } catch {
-      setLiked(wasLiked);
-      setLikeCount((c) => c + (wasLiked ? 1 : -1));
-      toast.error(wasLiked ? "Couldn't unlike this catch — try again." : "Couldn't like this catch — try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const photo = item.media[0];
-
-  const stats: { label: string; value: string }[] = [];
-  if (item.weight != null) stats.push({ label: 'Weight', value: `${item.weight} kg` });
-  if (item.length != null) stats.push({ label: 'Length', value: `${item.length} cm` });
-  if (item.baitUsed) stats.push({ label: 'Bait', value: item.baitUsed });
-  if (item.fishingMethod) stats.push({ label: 'Method', value: item.fishingMethod });
-
-  return (
-    <>
-      <Card className="overflow-hidden py-0 gap-0">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <Link to={`/anglers/${item.userId}`} className="flex items-center gap-2 text-foreground no-underline">
-              {item.userAvatarUrl ? (
-                <img
-                  src={resolveMediaUrl(item.userAvatarUrl)}
-                  alt=""
-                  className="w-8 h-8 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-muted" />
-              )}
-              <strong className="text-sm">{item.userFullName ?? 'Angler'}</strong>
-            </Link>
-            <span className="text-mono text-xs text-muted-foreground" title={new Date(item.catchDate).toLocaleString()}>
-              {formatDistanceToNow(new Date(item.catchDate), { addSuffix: true })}
-            </span>
-          </div>
-
-          {photo && (
-            <img
-              src={resolveMediaUrl(photo.mediaUrl)}
-              alt={item.speciesName ?? 'Catch photo'}
-              className="w-full h-auto max-h-[32rem] object-contain rounded-lg mb-3 bg-muted"
-            />
-          )}
-
-          <Link
-            to={`/catches/${item.id}`}
-            className="text-foreground no-underline transition-colors hover:text-brass hover:underline"
-          >
-            <strong>{item.speciesName ?? 'Unknown species'}</strong>
-          </Link>
-          {item.locationName && (
-            <div className="text-mono text-sm text-muted-foreground mb-2">
-              {item.locationName}
-            </div>
-          )}
-
-          {stats.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 mb-3">
-              {stats.map((s) => (
-                <StatBox key={s.label} label={s.label} value={s.value} />
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-center gap-1 -ml-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleLike}
-              disabled={busy}
-              className={`px-2 ${liked ? 'text-destructive' : 'text-muted-foreground'} hover:text-destructive`}
-            >
-              <Heart className="size-4" fill={liked ? 'currentColor' : 'none'} />
-              {likeCount}
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDialogOpen(true)}
-              className="px-2 text-muted-foreground hover:text-foreground"
-            >
-              <MessageCircle className="size-4" />
-              Comments
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <PostDialog
-        item={item}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        liked={liked}
-        likeCount={likeCount}
-        onToggleLike={toggleLike}
-        busy={busy}
-      />
-    </>
-  );
-}
-</file>
-
 <file path="src/components/CatchCardSkeleton.tsx">
 import { Card, CardContent } from './ui/card';
 import { Skeleton } from './ui/skeleton';
@@ -1602,6 +971,198 @@ export function CatchRowSkeleton() {
         <Skeleton className="h-4 w-10" />
       </CardContent>
     </Card>
+  );
+}
+</file>
+
+<file path="src/components/CommentSection.tsx">
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { commentsApi } from '../api/comments';
+import type { Comment } from '../types/comment';
+import { resolveMediaUrl } from '../utils/mediaUrl';
+import { Button } from './ui/button';
+import { Textarea } from './ui/textarea';
+
+function CommentRow({
+  comment,
+  onUpdated,
+  onDeleted,
+}: {
+  comment: Comment;
+  onUpdated: (updated: Comment) => void;
+  onDeleted: (id: string) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(comment.content);
+  const [busy, setBusy] = useState(false);
+
+  const saveEdit = async () => {
+    if (!draft.trim() || busy) return;
+    setBusy(true);
+    try {
+      await commentsApi.update(comment.catchId, comment.id, draft.trim());
+      onUpdated({ ...comment, content: draft.trim(), editedAt: new Date().toISOString() });
+      setIsEditing(false);
+    } catch {
+      toast.error("Couldn't save your edit — try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (busy || !confirm('Delete this comment?')) return;
+    setBusy(true);
+    try {
+      await commentsApi.remove(comment.catchId, comment.id);
+      onDeleted(comment.id);
+    } catch {
+      toast.error("Couldn't delete this comment — try again.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex gap-2.5 py-3">
+      {comment.userAvatarUrl ? (
+        <img
+          src={resolveMediaUrl(comment.userAvatarUrl)}
+          alt=""
+          className="size-8 shrink-0 rounded-full object-cover"
+        />
+      ) : (
+        <div className="size-8 shrink-0 rounded-full bg-muted" />
+      )}
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="text-sm font-medium">{comment.userFullName ?? 'Angler'}</span>
+          <span className="text-xs text-muted-foreground">
+            {new Date(comment.createdAt).toLocaleDateString()}
+            {comment.editedAt ? ' · edited' : ''}
+          </span>
+        </div>
+
+        {isEditing ? (
+          <div className="mt-1.5 flex flex-col gap-2">
+            <Textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              rows={2}
+              className="text-sm"
+            />
+            <div className="flex gap-2">
+              <Button size="sm" disabled={busy} onClick={saveEdit}>Save</Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => {
+                  setDraft(comment.content);
+                  setIsEditing(false);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-0.5 text-sm">{comment.content}</p>
+        )}
+
+        {comment.isOwnedByCurrentUser && !isEditing && (
+          <div className="mt-1 flex gap-3 text-xs text-muted-foreground">
+            <button onClick={() => setIsEditing(true)} className="hover:text-foreground">Edit</button>
+            <button onClick={remove} className="hover:text-destructive">Delete</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function CommentSection({ catchId }: { catchId: string }) {
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [newComment, setNewComment] = useState('');
+  const [posting, setPosting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const res = await commentsApi.getForCatch(catchId);
+        if (!cancelled) setComments(res.items);
+      } catch {
+        if (!cancelled) setError("Couldn't load comments.");
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [catchId]);
+
+  const submit = async () => {
+    const content = newComment.trim();
+    if (!content || posting) return;
+    setPosting(true);
+    try {
+      const created = await commentsApi.add(catchId, content);
+      setComments((prev) => [...prev, created]);
+      setNewComment('');
+    } catch {
+      toast.error("Couldn't post your comment — try again.");
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const handleUpdated = (updated: Comment) => {
+    setComments((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+  };
+
+  const handleDeleted = (id: string) => {
+    setComments((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  return (
+    <div className="mt-6">
+      <h2 className="font-heading text-lg">Comments {comments.length > 0 && `(${comments.length})`}</h2>
+
+      <div className="mt-2 flex gap-2">
+        <Textarea
+          value={newComment}
+          onChange={(e) => setNewComment(e.target.value)}
+          placeholder="Add a comment..."
+          rows={2}
+          className="text-sm"
+        />
+        <Button onClick={submit} disabled={posting || !newComment.trim()} className="shrink-0 self-end">
+          Post
+        </Button>
+      </div>
+
+      {isLoading && <p className="py-4 text-center text-sm text-muted-foreground">Loading…</p>}
+      {error && <p className="py-4 text-center text-sm text-destructive">{error}</p>}
+      {!isLoading && !error && comments.length === 0 && (
+        <p className="py-4 text-center text-sm text-muted-foreground">No comments yet — be the first.</p>
+      )}
+
+      <div className="divide-y divide-border">
+        {comments.map((c) => (
+          <CommentRow key={c.id} comment={c} onUpdated={handleUpdated} onDeleted={handleDeleted} />
+        ))}
+      </div>
+    </div>
   );
 }
 </file>
@@ -1653,165 +1214,6 @@ export function FeedComposer({ avatarUrl }: { avatarUrl?: string | null }) {
 }
 </file>
 
-<file path="src/components/FeedLayout.tsx">
-import { Outlet } from 'react-router-dom';
-import { Sidebar } from './Sidebar';
-import { FollowSidebar } from './FollowSidebar';
-import { SearchBar } from './SearchBar';
-
-export function FeedLayout() {
-  return (
-    <div className="grid min-h-screen grid-cols-[auto_1fr_auto]">
-      <Sidebar />
-      <main className="min-w-0">
-        <div className="mx-auto w-full max-w-4xl px-6 py-8">
-          <Outlet />
-        </div>
-      </main>
-
-      <div className="hidden w-70 shrink-0 py-6 pr-6 lg:block">
-        <div className="sticky top-24 flex max-h-[calc(100vh-7rem)] flex-col gap-4">
-          <SearchBar />
-          <FollowSidebar />
-        </div>
-      </div>
-    </div>
-  );
-}
-</file>
-
-<file path="src/components/FollowSidebar.tsx">
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { toast } from 'sonner';
-import { useAuth } from '../context/useAuth';
-import { followApi } from '../api/follow';
-import type { FollowSummary } from '../types/follow';
-import { resolveMediaUrl } from '../utils/mediaUrl';
-import { Button } from './ui/button';
-
-type Tab = 'following' | 'followers';
-
-function FollowRow({ person, onToggled }: { person: FollowSummary; onToggled: (id: string, nowFollowing: boolean) => void }) {
-  const [busy, setBusy] = useState(false);
-
-  const toggle = async () => {
-    if (busy) return;
-    setBusy(true);
-    const was = person.isFollowedByCurrentUser;
-    try {
-      if (was) await followApi.unfollow(person.id);
-      else await followApi.follow(person.id);
-      onToggled(person.id, !was);
-    } catch {
-      toast.error(was ? "Couldn't unfollow — try again." : "Couldn't follow — try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-2.5 py-2">
-      <Link to={`/anglers/${person.id}`} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
-        {person.avatarUrl ? (
-          <img src={resolveMediaUrl(person.avatarUrl)} alt="" className="size-8 shrink-0 rounded-full object-cover" />
-        ) : (
-          <div className="size-8 shrink-0 rounded-full bg-muted" />
-        )}
-        <span className="truncate text-sm font-medium">{person.fullName ?? 'Angler'}</span>
-      </Link>
-      <Button
-        variant={person.isFollowedByCurrentUser ? 'outline' : 'default'}
-        size="sm"
-        disabled={busy}
-        onClick={toggle}
-        className="shrink-0"
-      >
-        {person.isFollowedByCurrentUser ? 'Following' : 'Follow'}
-      </Button>
-    </div>
-  );
-}
-
-export function FollowSidebar() {
-  const { user } = useAuth();
-  const [tab, setTab] = useState<Tab>('following');
-  const [people, setPeople] = useState<FollowSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-
-    async function load() {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const res = tab === 'following'
-          ? await followApi.getFollowing(user!.id)
-          : await followApi.getFollowers(user!.id);
-        if (!cancelled) setPeople(res.items);
-      } catch {
-        if (!cancelled) setError("Couldn't load this list.");
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    }
-
-    load();
-    return () => { cancelled = true; };
-  }, [tab, user]);
-
-  const handleToggled = (id: string, nowFollowing: boolean) => {
-    // Unfollowing from the "Following" tab removes them from the list;
-    // everywhere else we just flip the button state in place.
-    if (tab === 'following' && !nowFollowing) {
-      setPeople((prev) => prev.filter((p) => p.id !== id));
-    } else {
-      setPeople((prev) => prev.map((p) => (p.id === id ? { ...p, isFollowedByCurrentUser: nowFollowing } : p)));
-    }
-  };
-
-  return (
-        <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-2xl border border-border bg-card p-4">      <div className="mb-3 flex gap-1 rounded-full bg-muted p-1 text-sm">
-        <button
-          onClick={() => setTab('following')}
-          className={`flex-1 rounded-full py-1.5 font-medium transition-colors ${
-            tab === 'following' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
-          }`}
-        >
-          Following
-        </button>
-        <button
-          onClick={() => setTab('followers')}
-          className={`flex-1 rounded-full py-1.5 font-medium transition-colors ${
-            tab === 'followers' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
-          }`}
-        >
-          Followers
-        </button>
-      </div>
-
-      {isLoading && <p className="py-4 text-center text-sm text-muted-foreground">Loading…</p>}
-      {error && <p className="py-4 text-center text-sm text-destructive">{error}</p>}
-
-      {!isLoading && !error && people.length === 0 && (
-        <p className="py-4 text-center text-sm text-muted-foreground">
-          {tab === 'following' ? "You're not following anyone yet." : 'No followers yet.'}
-        </p>
-      )}
-
-      <div className="flex flex-col divide-y divide-border">
-        {people.map((p) => (
-          <FollowRow key={p.id} person={p} onToggled={handleToggled} />
-        ))}
-      </div>
-    </aside>
-  );
-}
-</file>
-
 <file path="src/components/Layout.tsx">
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
@@ -1853,40 +1255,74 @@ export function NotificationBell() {
 }
 </file>
 
-<file path="src/components/PageHeader.tsx">
-import type { ReactNode } from 'react';
+<file path="src/components/PostDialog.tsx">
+import type { Catch } from '../types/catch';
+import { resolveMediaUrl } from '../utils/mediaUrl';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Heart } from 'lucide-react';
+import { CommentSection } from './CommentSection';
 
-
-/**
- * Sticky page header used at the top of list-style pages (Feed, My Catches,
- * Analytics, etc). Bleeds out to the edges of the <main> content column via
- * negative margins, then re-applies the same padding so nothing shifts.
- *
- * `main` in Layout.tsx uses `px-6 py-8` — if that ever changes, update the
- * -mx-6/-mt-8/px-6/pt-8 values below to match.
- */
-export function PageHeader({
-  title,
-  action,
-  children,
+export function PostDialog({
+  item,
+  open,
+  onOpenChange,
+  liked,
+  likeCount,
+  onToggleLike,
+  busy,
 }: {
-  title: string;
-  action?: ReactNode;
-  children?: ReactNode;
+  item: Catch;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  liked: boolean;
+  likeCount: number;
+  onToggleLike: () => void;
+  busy: boolean;
 }) {
+  const photo = item.media[0];
+
   return (
-    <div
-      className="sticky top-0 z-10 -mx-6 -mt-8 border-b rounded-2xl border-border px-6 pt-8 pb-4 backdrop-blur-sm"
-      style={{ backgroundColor: 'color-mix(in oklab, var(--color-paper) 92%, transparent)' }}
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-heading text-2xl">{title}</h1>
-        </div>
-        {action}
-      </div>
-      {children}
-    </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-3xl max-h-[87vh] overflow-y-auto rounded-2xl">
+            <div className="flex items-center gap-2">
+            {item.userAvatarUrl ? (
+                <img src={resolveMediaUrl(item.userAvatarUrl)} alt="" className="w-8 h-8 rounded-full object-cover" />
+            ) : (
+                <div className="w-8 h-8 rounded-full bg-muted" />
+            )}
+            <strong className="text-sm">{item.userFullName ?? 'Angler'}</strong>
+            </div>
+
+            {photo && (
+            <img
+                src={resolveMediaUrl(photo.mediaUrl)}
+                alt={item.speciesName ?? 'Catch photo'}
+                className="w-full h-auto max-h-[32rem] object-contain rounded-lg bg-muted"
+            />
+            )}
+
+            <div>
+            <strong className="text-base">{item.speciesName ?? 'Unknown species'}</strong>
+            {item.locationName && (
+                <div className="text-mono text-sm text-muted-foreground">{item.locationName}</div>
+            )}
+            </div>
+
+            <Button
+            variant="ghost"
+            size="sm"
+            onClick={onToggleLike}
+            disabled={busy}
+            className={`w-fit px-2 -ml-2 ${liked ? 'text-destructive' : 'text-muted-foreground'} hover:text-destructive`}
+            >
+            <Heart className="size-4" fill={liked ? 'currentColor' : 'none'} />
+            {likeCount}
+            </Button>
+
+            <CommentSection catchId={item.id} />
+        </DialogContent>
+    </Dialog>
   );
 }
 </file>
@@ -2035,6 +1471,234 @@ export function QuickAddLocationDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+</file>
+
+<file path="src/components/SearchBar.tsx">
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import { Search, X, Fish } from 'lucide-react';
+import { searchApi } from '../api/search';
+import { followApi } from '../api/follow';
+import type { SearchResults, SearchScope } from '../types/search';
+import { resolveMediaUrl } from '../utils/mediaUrl';
+import { cn } from '@/lib/utils';
+
+const SCOPES: { value: SearchScope; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'users', label: 'Anglers' },
+  { value: 'catches', label: 'Catches' },
+];
+
+const EMPTY_PAGE = { items: [], totalCount: 0, page: 1, pageSize: 20, totalPages: 0 };
+const emptyResults = (): SearchResults => ({ users: { ...EMPTY_PAGE }, catches: { ...EMPTY_PAGE } });
+
+export function SearchBar() {
+  const navigate = useNavigate();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
+
+  const [query, setQuery] = useState('');
+  const [scope, setScope] = useState<SearchScope>('all');
+  const [results, setResults] = useState<SearchResults>(emptyResults());
+  const [isLoading, setIsLoading] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Close on outside click — a genuine external-event subscription, so an effect is right here.
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  // Clear any pending debounce on unmount.
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
+
+  // Triggered directly from the input's onChange / the tab buttons' onClick —
+  // not from an effect — since this is "responding to an event", not syncing with an external system.
+  function runSearch(term: string, nextScope: SearchScope) {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    const trimmed = term.trim();
+    if (trimmed.length < 2) {
+      setIsLoading(false);
+      return;
+    }
+
+    const thisRequestId = ++requestIdRef.current;
+    setIsLoading(true);
+
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await searchApi.search(trimmed, nextScope);
+        if (thisRequestId === requestIdRef.current) setResults(res);
+      } catch {
+        if (thisRequestId === requestIdRef.current) setResults(emptyResults());
+      } finally {
+        if (thisRequestId === requestIdRef.current) setIsLoading(false);
+      }
+    }, 300);
+  }
+
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
+    runSearch(value, scope);
+  };
+
+  const handleScopeChange = (next: SearchScope) => {
+    setScope(next);
+    runSearch(query, next);
+  };
+
+  const clear = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    requestIdRef.current++; // invalidate any in-flight request
+    setQuery('');
+    setResults(emptyResults());
+    setIsLoading(false);
+  };
+
+  const users = results.users.items;
+  const catches = results.catches.items;
+  const hasQuery = query.trim().length >= 2;
+  const hasResults = users.length > 0 || catches.length > 0;
+
+  const goTo = (path: string) => {
+    setIsOpen(false);
+    clear();
+    navigate(path);
+  };
+
+  const toggleFollow = async (userId: string, isFollowing: boolean) => {
+    try {
+      if (isFollowing) await followApi.unfollow(userId);
+      else await followApi.follow(userId);
+      setResults((prev) => ({
+        ...prev,
+        users: {
+          ...prev.users,
+          items: prev.users.items.map((u) =>
+            u.id === userId ? { ...u, isFollowedByCurrentUser: !isFollowing } : u
+          ),
+        },
+      }));
+    } catch {
+      toast.error(isFollowing ? "Couldn't unfollow — try again." : "Couldn't follow — try again.");
+    }
+  };
+
+  return (
+    <div ref={containerRef} className="relative shrink-0">
+      <div className="flex h-16 items-center gap-2.5 rounded-2xl border border-border bg-card px-4 shadow-sm">
+        <Search className="size-4 shrink-0 text-muted-foreground" />
+        <input
+          value={query}
+          onChange={(e) => handleQueryChange(e.target.value)}
+          onFocus={() => setIsOpen(true)}
+          placeholder="Search anglers & catches"
+          className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+        />
+        {query && (
+          <button onClick={clear} aria-label="Clear search" className="shrink-0 text-muted-foreground hover:text-foreground">
+            <X className="size-3.5" />
+          </button>
+        )}
+      </div>
+
+      {isOpen && hasQuery && (
+        <div className="absolute top-[calc(100%+0.5rem)] left-0 z-20 flex max-h-[28rem] w-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-lg">
+          <div className="flex gap-1 border-b border-border p-2">
+            {SCOPES.map((s) => (
+              <button
+                key={s.value}
+                onClick={() => handleScopeChange(s.value)}
+                className={cn(
+                  'flex-1 rounded-full py-1.5 text-xs font-medium transition-colors',
+                  scope === s.value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60'
+                )}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="overflow-y-auto p-2">
+            {isLoading && <p className="py-4 text-center text-sm text-muted-foreground">Searching…</p>}
+
+            {!isLoading && !hasResults && (
+              <p className="py-4 text-center text-sm text-muted-foreground">No results for "{query.trim()}"</p>
+            )}
+
+            {!isLoading && (scope === 'all' || scope === 'users') && users.length > 0 && (
+              <div className="mb-2">
+                {scope === 'all' && (
+                  <p className="px-2 pb-1 text-xs tracking-widest text-muted-foreground uppercase">Anglers</p>
+                )}
+                {users.map((u) => (
+                  <div key={u.id} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-muted">
+                    <button onClick={() => goTo(`/anglers/${u.id}`)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+                      {u.avatarUrl ? (
+                        <img src={resolveMediaUrl(u.avatarUrl)} alt="" className="size-8 shrink-0 rounded-full object-cover" />
+                      ) : (
+                        <div className="size-8 shrink-0 rounded-full bg-muted" />
+                      )}
+                      <span className="truncate text-sm font-medium">{u.fullName ?? u.userName ?? 'Angler'}</span>
+                    </button>
+                    <button
+                      onClick={() => toggleFollow(u.id, u.isFollowedByCurrentUser)}
+                      className={cn(
+                        'shrink-0 rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                        u.isFollowedByCurrentUser
+                          ? 'border border-border text-foreground hover:bg-muted'
+                          : 'bg-primary text-primary-foreground hover:bg-primary/85'
+                      )}
+                    >
+                      {u.isFollowedByCurrentUser ? 'Following' : 'Follow'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!isLoading && (scope === 'all' || scope === 'catches') && catches.length > 0 && (
+              <div>
+                {scope === 'all' && (
+                  <p className="px-2 pb-1 text-xs tracking-widest text-muted-foreground uppercase">Catches</p>
+                )}
+                {catches.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => goTo(`/catches/${c.id}`)}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-muted"
+                  >
+                    {c.media[0]?.mediaUrl ? (
+                      <img src={resolveMediaUrl(c.media[0].mediaUrl)} alt="" className="size-8 shrink-0 rounded-md object-cover" />
+                    ) : (
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                        <Fish className="size-4 text-muted-foreground" />
+                      </div>
+                    )}
+                    <span className="truncate text-sm">
+                      <span className="font-medium">{c.speciesName ?? 'Catch'}</span>
+                      {c.userFullName && <span className="text-muted-foreground"> · {c.userFullName}</span>}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 </file>
@@ -3165,29 +2829,6 @@ function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
 }
 
 export { Textarea }
-</file>
-
-<file path="src/context/auth-context.ts">
-import { createContext } from 'react';
-import type { CurrentUser } from '../types/auth';
-
-interface RegisterPayload {
-  userName: string;
-  email: string;
-  fullName: string;
-  password: string;
-}
-
-export interface AuthContextValue {
-  user: CurrentUser | null;
-  isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (payload: RegisterPayload) => Promise<void>;
-  logout: () => void;
-  sessionExpiredMessage: string | null;
-  clearSessionExpiredMessage: () => void;
-}
-export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 </file>
 
 <file path="src/context/notifications-context.ts">
@@ -4384,12 +4025,12 @@ function StatCard({ value, label }: { value: string | number; label: string }) {
 }
 </file>
 
-<file path="src/pages/auth/Login.tsx">
-import { useEffect } from 'react';
+<file path="src/pages/auth/ForgotPassword.tsx">
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/useAuth';
 import { CastDivider } from '../../components/CastDivider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -4398,39 +4039,30 @@ import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 
-const loginSchema = z.object({
+const forgotPasswordSchema = z.object({
   email: z.string().min(1, 'Email is required').email('Enter a valid email'),
-  password: z.string().min(1, 'Password is required'),
 });
 
-type LoginValues = z.infer<typeof loginSchema>;
+type ForgotPasswordValues = z.infer<typeof forgotPasswordSchema>;
 
-export function Login() {
-  const { login, sessionExpiredMessage, clearSessionExpiredMessage } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
+export function ForgotPassword() {
+  const { forgotPassword } = useAuth();
+  const [submitted, setSubmitted] = useState(false);
 
-  const form = useForm<LoginValues>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: { email: '', password: '' },
+  const form = useForm<ForgotPasswordValues>({
+    resolver: zodResolver(forgotPasswordSchema),
+    defaultValues: { email: '' },
   });
 
-  useEffect(() => {
-    return () => clearSessionExpiredMessage();
-  }, [clearSessionExpiredMessage]);
-
-  const from = (location.state as { from?: Location })?.from?.pathname ?? '/feed';
-
-  const onSubmit = async (values: LoginValues) => {
+  const onSubmit = async (values: ForgotPasswordValues) => {
     try {
-      await login(values.email, values.password);
-      navigate(from, { replace: true });
-    } catch (err) {
-      const message =
-        err && typeof err === 'object' && 'message' in err
-          ? String((err as { message: unknown }).message)
-          : 'Something went wrong. Please try again.';
-      form.setError('root', { message });
+      await forgotPassword(values.email);
+    } catch {
+      // Deliberately swallowed: the backend always returns success here to
+      // avoid revealing which emails are registered, so there's nothing
+      // meaningful to show as an error either way.
+    } finally {
+      setSubmitted(true);
     }
   };
 
@@ -4441,69 +4073,51 @@ export function Login() {
         style={{ backgroundColor: 'color-mix(in oklab, var(--color-surface) 70%, transparent)' }}
       >
         <CardHeader>
-          <CardTitle>Log in</CardTitle>
+          <CardTitle>Forgot your password?</CardTitle>
         </CardHeader>
         <CardContent>
           <CastDivider />
-          {sessionExpiredMessage && (
-            <p
-              role="alert"
-              className="mb-4 border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            >
-              {sessionExpiredMessage}
+
+          {submitted ? (
+            <p className="text-sm text-muted-foreground">
+              If an account with that email exists, we've sent a link to reset your password.
             </p>
+          ) : (
+            <>
+              <p className="mb-4 text-sm text-muted-foreground">
+                Enter your email and we'll send you a link to reset it.
+              </p>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email</FormLabel>
+                        <FormControl>
+                          <Input type="email" autoComplete="email" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <Button type="submit" disabled={form.formState.isSubmitting} className="w-full">
+                    {form.formState.isSubmitting ? 'Sending…' : 'Send reset link'}
+                  </Button>
+                </form>
+              </Form>
+            </>
           )}
 
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input type="email" autoComplete="email" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input type="password" autoComplete="current-password" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {form.formState.errors.root && (
-                <p className="text-sm text-destructive" role="alert">
-                  {form.formState.errors.root.message}
-                </p>
-              )}
-
-              <Button type="submit" disabled={form.formState.isSubmitting} className="w-full">
-                {form.formState.isSubmitting ? 'Logging in…' : 'Log in'}
-              </Button>
-            </form>
-          </Form>
-
           <p className="mt-5 text-sm text-muted-foreground">
-            No account?{' '}
-            <Link to="/register" className="text-foreground underline underline-offset-4">
-              Register
+            <Link to="/login" className="text-foreground underline underline-offset-4">
+              Back to login
             </Link>
           </p>
         </CardContent>
-     </Card>
+      </Card>
     </AuthLayout>
   );
 }
@@ -4521,6 +4135,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { AuthLayout } from '@/components/auth/AuthLayout';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
+
 
 const registerSchema = z.object({
   fullName: z.string().min(1, 'Full name is required'),
@@ -4636,7 +4252,14 @@ export function Register() {
               </Button>
             </form>
           </Form>
+          
+          <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            or
+            <span className="h-px flex-1 bg-border" />
+          </div>
 
+          <GoogleSignInButton text="signup_with" onError={(message) => form.setError('root', { message })} />
           <p className="mt-5 text-sm text-muted-foreground">
             Already have an account?{' '}
             <Link to="/login" className="text-foreground underline underline-offset-4">
@@ -4650,135 +4273,137 @@ export function Register() {
 }
 </file>
 
-<file path="src/pages/catches/CatchDetail.tsx">
-import { useEffect, useState } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
-import { Heart } from 'lucide-react';
-import { catchesApi } from '../../api/catches';
-import type { Catch } from '../../types/catch';
+<file path="src/pages/auth/ResetPassword.tsx">
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../../context/useAuth';
 import { CastDivider } from '../../components/CastDivider';
-import { resolveMediaUrl } from '../../utils/mediaUrl';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CommentSection } from '../../components/CommentSection';
+import { Input } from '@/components/ui/input';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { AuthLayout } from '@/components/auth/AuthLayout';
 
-export function CatchDetail() {
-  const { id } = useParams();
+const resetPasswordSchema = z
+  .object({
+    newPassword: z.string().min(6, 'Password must be at least 6 characters'),
+    confirmPassword: z.string().min(1, 'Please confirm your password'),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ['confirmPassword'],
+  });
+
+type ResetPasswordValues = z.infer<typeof resetPasswordSchema>;
+
+export function ResetPassword() {
+  const { resetPassword } = useAuth();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const [item, setItem] = useState<Catch | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [liked, setLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(0);
-  const [likeBusy, setLikeBusy] = useState(false);
+  const [searchParams] = useSearchParams();
+  const email = searchParams.get('email') ?? '';
+  const token = searchParams.get('token') ?? '';
 
-  useEffect(() => {
-    if (!id) return;
-    catchesApi.getById(id)
-      .then((data) => {
-        setItem(data);
-        setLiked(data.isLikedByCurrentUser);
-        setLikeCount(data.likeCount);
-      })
-     .catch((err) => {
-        console.error('Failed to load catch', id, err);
-        if (err?.response?.status === 403) setError("You don't have permission to view this catch.");
-        else if (err?.response?.status === 401) setError('Please log in to view this catch.');
-        else setError('Catch not found.');
-});
-  }, [id]);
+  const form = useForm<ResetPasswordValues>({
+    resolver: zodResolver(resetPasswordSchema),
+    defaultValues: { newPassword: '', confirmPassword: '' },
+  });
 
-  const handleDelete = async () => {
-    if (!item || !confirm('Delete this catch? This cannot be undone.')) return;
-    await catchesApi.remove(item.id);
-    navigate('/catches');
-  };
-
-  const toggleLike = async () => {
-    if (!item || likeBusy) return;
-    setLikeBusy(true);
-    const wasLiked = liked;
-    setLiked(!wasLiked);
-    setLikeCount((c) => c + (wasLiked ? -1 : 1));
-
+  const onSubmit = async (values: ResetPasswordValues) => {
     try {
-      if (wasLiked) await catchesApi.unlike(item.id);
-      else await catchesApi.like(item.id);
-    } catch {
-      setLiked(wasLiked);
-      setLikeCount((c) => c + (wasLiked ? 1 : -1));
-    } finally {
-      setLikeBusy(false);
+      await resetPassword(email, token, values.newPassword);
+      navigate('/login', { replace: true });
+    } catch (err) {
+      const message =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'This link may have expired — request a new one.';
+      form.setError('root', { message });
     }
   };
 
-  if (error) return <p className="text-sm text-destructive">{error}</p>;
-  if (!item) return <p className="text-muted-foreground">Loading...</p>;
-
-  const isOwner = user?.id === item.userId;
+  if (!email || !token) {
+    return (
+      <AuthLayout>
+        <Card
+          className="border-white/40 backdrop-blur-xl"
+          style={{ backgroundColor: 'color-mix(in oklab, var(--color-surface) 70%, transparent)' }}
+        >
+          <CardHeader>
+            <CardTitle>Invalid link</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CastDivider />
+            <p className="text-sm text-muted-foreground">
+              This reset link is invalid or incomplete.{' '}
+              <Link to="/forgot-password" className="text-foreground underline underline-offset-4">
+                Request a new one
+              </Link>
+              .
+            </p>
+          </CardContent>
+        </Card>
+      </AuthLayout>
+    );
+  }
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <Card>
+    <AuthLayout>
+      <Card
+        className="border-white/40 backdrop-blur-xl"
+        style={{ backgroundColor: 'color-mix(in oklab, var(--color-surface) 70%, transparent)' }}
+      >
+        <CardHeader>
+          <CardTitle>Choose a new password</CardTitle>
+        </CardHeader>
         <CardContent>
-          <Link to="/catches" className="text-sm text-muted-foreground hover:text-foreground">
-            ← Back
-          </Link>
-
-          {item.media.length > 0 && (
-            <div className="my-4 flex gap-2 overflow-x-auto">
-              {item.media.map((m) => (
-                <img
-                  key={m.id}
-                  src={resolveMediaUrl(m.mediaUrl)}
-                  alt={m.fileName ?? 'Catch photo'}
-                  className="h-45"
-                />
-              ))}
-            </div>
-          )}
-
-          <h1 className="font-heading text-2xl">{item.speciesName ?? 'Unknown species'}</h1>
           <CastDivider />
 
-          <p className="font-mono text-lg">
-            {item.weight != null ? `${item.weight} kg` : '—'} · {item.length != null ? `${item.length} cm` : '—'}
-          </p>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="newPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>New password</FormLabel>
+                    <FormControl>
+                      <Input type="password" autoComplete="new-password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-          <p className="text-muted-foreground">
-            📍 {item.locationName ?? 'Private spot'} &nbsp;·&nbsp; 📅 {new Date(item.catchDate).toLocaleDateString()}
-          </p>
+              <FormField
+                control={form.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Confirm password</FormLabel>
+                    <FormControl>
+                      <Input type="password" autoComplete="new-password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-          {item.gearUsed && <p><strong>Gear:</strong> {item.gearUsed}</p>}
-          {item.baitUsed && <p><strong>Bait:</strong> {item.baitUsed}</p>}
-          {item.fishingMethod && <p><strong>Method:</strong> {item.fishingMethod}</p>}
-          {item.weatherConditions && <p><strong>Weather:</strong> {item.weatherConditions}</p>}
-          {item.notes && <p><strong>Notes:</strong> {item.notes}</p>}
+              {form.formState.errors.root && (
+                <p className="text-sm text-destructive" role="alert">
+                  {form.formState.errors.root.message}
+                </p>
+              )}
 
-          <Button
-            variant="ghost"
-            onClick={toggleLike}
-            disabled={likeBusy}
-            className="mt-2 h-auto gap-1.5 p-0 text-sm normal-case tracking-normal text-brass hover:bg-transparent"
-          >
-            <Heart className={liked ? 'fill-rust text-rust' : 'text-brass'} />
-            {likeCount} likes
-          </Button>
-
-          <CommentSection catchId={item.id} />
-
-          {isOwner && (
-            <div className="mt-4 flex gap-3">
-              <Link to={`/catches/${item.id}/edit`}>
-                <Button variant="outline">Edit</Button>
-              </Link>
-              <Button variant="destructive" onClick={handleDelete}>Delete</Button>
-            </div>
-          )}
+              <Button type="submit" disabled={form.formState.isSubmitting} className="w-full">
+                {form.formState.isSubmitting ? 'Resetting…' : 'Reset password'}
+              </Button>
+            </form>
+          </Form>
         </CardContent>
       </Card>
-    </div>
+    </AuthLayout>
   );
 }
 </file>
@@ -6407,6 +6032,20 @@ export interface PagedResult<T> {
 }
 </file>
 
+<file path="src/types/comment.ts">
+export interface Comment {
+  id: string;
+  catchId: string;
+  userId: string;
+  userFullName: string | null;
+  userAvatarUrl: string | null;
+  content: string;
+  createdAt: string;
+  editedAt: string | null;
+  isOwnedByCurrentUser: boolean;
+}
+</file>
+
 <file path="src/types/export.ts">
 export type ExportFormat = 'Csv' | 'Json' | 'Pdf';
 
@@ -6509,6 +6148,25 @@ export interface PublicProfile {
   followingCount: number;
   isFollowedByCurrentUser: boolean;
 }
+</file>
+
+<file path="src/types/search.ts">
+import type { Catch, PagedResult } from './catch';
+
+export interface SearchUserResult {
+  id: string;
+  userName: string | null;
+  fullName: string | null;
+  avatarUrl: string | null;
+  isFollowedByCurrentUser: boolean;
+}
+
+export interface SearchResults {
+  users: PagedResult<SearchUserResult>;
+  catches: PagedResult<Catch>;
+}
+
+export type SearchScope = 'all' | 'users' | 'catches';
 </file>
 
 <file path="src/types/species.ts">
@@ -6639,177 +6297,767 @@ export default defineConfig({
 })
 </file>
 
-<file path="src/api/client.ts">
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+<file path="src/App.tsx">
+import { Routes, Route } from 'react-router-dom';
+import { Layout } from './components/Layout';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { AdminRoute } from './components/AdminRoute';
+import { Login } from './pages/auth/Login';
+import { Register } from './pages/auth/Register';
+import { MyCatches } from './pages/catches/MyCatches';
+import { CatchForm } from './pages/catches/CatchForm';
+import { CatchDetail } from './pages/catches/CatchDetail';
+import { MyLocations } from './pages/locations/MyLocations';
+import { MyProfile } from './pages/profile/MyProfile';
+import { Feed } from './pages/feed/Feed';
+import { PublicProfile } from './pages/profile/PublicProfile';
+import { Notifications } from './pages/notifications/Notifications';
+import { Analytics } from './pages/analytics/Analytics';
+import { ExportPage } from './pages/export/ExportPage';
+import { AdminLayout } from './pages/admin/AdminLayout';
+import { ManageUsers } from './pages/admin/ManageUsers';
+import { ManageSpecies } from './pages/admin/ManageSpecies';
+import { SystemReports } from './pages/admin/SystemReports';
+import { AuditLogs } from './pages/admin/AuditLogs';
+import { Backup } from './pages/admin/Backup';
+import { FeedLayout } from './components/FeedLayout';
+import { LandingPage } from './pages/landing/LandingPage';
+import { ForgotPassword } from './pages/auth/ForgotPassword';
+import { ResetPassword } from './pages/auth/ResetPassword';
 
-let onUnauthorized: (() => void) | null = null;
-export function setUnauthorizedHandler(handler: () => void) {
-  onUnauthorized = handler;
+
+
+
+function App() {
+  return (
+   <Routes>
+       <Route path="/" element={<LandingPage />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+
+      <Route element={<ProtectedRoute />}>
+        {/* Feed gets the wider shell */}
+        <Route element={<FeedLayout />}>
+          <Route path="/" element={<Feed />} />
+          <Route path="/feed" element={<Feed />} />
+        </Route>
+
+        {/* Everything else keeps the narrow shell */}
+        <Route element={<Layout />}>
+          <Route path="/catches" element={<MyCatches />} />
+          <Route path="/catches/new" element={<CatchForm />} />
+          <Route path="/catches/:id" element={<CatchDetail />} />
+          <Route path="/catches/:id/edit" element={<CatchForm />} />
+
+          <Route path="/locations" element={<MyLocations />} />
+          <Route path="/profile" element={<MyProfile />} />
+          <Route path="/anglers/:userId" element={<PublicProfile />} />
+
+          <Route path="/notifications" element={<Notifications />} />
+          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/export" element={<ExportPage />} />
+
+          <Route element={<AdminRoute />}>
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<ManageUsers />} />
+              <Route path="users" element={<ManageUsers />} />
+              <Route path="species" element={<ManageSpecies />} />
+              <Route path="reports" element={<SystemReports />} />
+              <Route path="audit-logs" element={<AuditLogs />} />
+              <Route path="backup" element={<Backup />} />
+            </Route>
+          </Route>
+        </Route>
+      </Route>
+    </Routes>
+  );
 }
 
-let getToken: () => string | null = () => null;
-export function setTokenGetter(fn: () => string | null) {
-  getToken = fn;
+export default App;
+</file>
+
+<file path="src/components/CatchCard.tsx">
+import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import { Heart, MessageCircle } from 'lucide-react';
+import { toast } from 'sonner';
+import { formatDistanceToNow } from 'date-fns';
+import type { Catch } from '../types/catch';
+import { catchesApi } from '../api/catches';
+import { resolveMediaUrl } from '../utils/mediaUrl';
+import { Card, CardContent } from './ui/card';
+import { Button } from './ui/button';
+import { PostDialog } from './PostDialog';
+
+function StatBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-muted px-3 py-2">
+      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className="text-sm font-semibold text-foreground">{value}</div>
+    </div>
+  );
 }
 
-let getRefreshToken: () => string | null = () => null;
-export function setRefreshTokenGetter(fn: () => string | null) {
-  getRefreshToken = fn;
-}
+export function CatchCard({ item }: { item: Catch }) {
+  const [liked, setLiked] = useState(item.isLikedByCurrentUser);
+  const [likeCount, setLikeCount] = useState(item.likeCount);
+  const [busy, setBusy] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
-// Called after a successful silent refresh so AuthContext can persist
-// the new pair and update its state — client.ts doesn't own storage.
-let onTokenRefreshed: ((token: string, refreshToken: string) => void) | null = null;
-export function setTokenRefreshedHandler(handler: (token: string, refreshToken: string) => void) {
-  onTokenRefreshed = handler;
-}
+  const toggleLike = async () => {
+    if (busy) return;
+    setBusy(true);
+    const wasLiked = liked;
+    setLiked(!wasLiked);
+    setLikeCount((c) => c + (wasLiked ? -1 : 1));
 
-interface ApiError {
-  status: number;
-  message: string;
-  details?: unknown;
-}
-
-// Coalesces concurrent 401s into a single refresh call instead of firing
-// one per in-flight request.
-let refreshPromise: Promise<string | null> | null = null;
-
-async function tryRefreshToken(): Promise<string | null> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return null;
-
-  if (!refreshPromise) {
-    refreshPromise = (async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken }),
-        });
-        if (!response.ok) return null;
-        const data = await response.json();
-        onTokenRefreshed?.(data.token, data.refreshToken);
-        return data.token as string;
-      } catch {
-        return null;
-      } finally {
-        refreshPromise = null;
-      }
-    })();
-  }
-  return refreshPromise;
-}
-
-async function request<T>(
-  path: string,
-  options: RequestInit = {},
-  isRetry = false
-): Promise<T> {
-  const token = getToken();
-
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(options.headers || {}),
+    try {
+      if (wasLiked) await catchesApi.unlike(item.id);
+      else await catchesApi.like(item.id);
+    } catch {
+      setLiked(wasLiked);
+      setLikeCount((c) => c + (wasLiked ? 1 : -1));
+      toast.error(wasLiked ? "Couldn't unlike this catch — try again." : "Couldn't like this catch — try again.");
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  const photo = item.media[0];
 
-  if (response.status === 401) {
-    if (!isRetry) {
-      const newToken = await tryRefreshToken();
-      if (newToken) {
-        return request<T>(path, options, true);
+  const stats: { label: string; value: string }[] = [];
+  if (item.weight != null) stats.push({ label: 'Weight', value: `${item.weight} kg` });
+  if (item.length != null) stats.push({ label: 'Length', value: `${item.length} cm` });
+  if (item.baitUsed) stats.push({ label: 'Bait', value: item.baitUsed });
+  if (item.fishingMethod) stats.push({ label: 'Method', value: item.fishingMethod });
+
+  return (
+    <>
+      <Card className="overflow-hidden py-0 gap-0">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <Link to={`/anglers/${item.userId}`} className="flex items-center gap-2 text-foreground no-underline">
+              {item.userAvatarUrl ? (
+                <img
+                  src={resolveMediaUrl(item.userAvatarUrl)}
+                  alt=""
+                  className="w-8 h-8 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-muted" />
+              )}
+              <strong className="text-sm">{item.userFullName ?? 'Angler'}</strong>
+            </Link>
+            <span className="text-mono text-xs text-muted-foreground" title={new Date(item.catchDate).toLocaleString()}>
+              {formatDistanceToNow(new Date(item.catchDate), { addSuffix: true })}
+            </span>
+          </div>
+
+          {photo && (
+            <img
+              src={resolveMediaUrl(photo.mediaUrl)}
+              alt={item.speciesName ?? 'Catch photo'}
+              className="w-full h-auto max-h-[32rem] object-contain rounded-lg mb-3 bg-muted"
+            />
+          )}
+
+          <Link
+            to={`/catches/${item.id}`}
+            className="text-foreground no-underline transition-colors hover:text-brass hover:underline"
+          >
+            <strong>{item.speciesName ?? 'Unknown species'}</strong>
+          </Link>
+          {item.locationName && (
+            <div className="text-mono text-sm text-muted-foreground mb-2">
+              {item.locationName}
+            </div>
+          )}
+
+          {stats.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 mb-3">
+              {stats.map((s) => (
+                <StatBox key={s.label} label={s.label} value={s.value} />
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-1 -ml-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleLike}
+              disabled={busy}
+              className={`px-2 ${liked ? 'text-destructive' : 'text-muted-foreground'} hover:text-destructive`}
+            >
+              <Heart className="size-4" fill={liked ? 'currentColor' : 'none'} />
+              {likeCount}
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDialogOpen(true)}
+              className="px-2 text-muted-foreground hover:text-foreground"
+            >
+              <MessageCircle className="size-4" />
+              Comments
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <PostDialog
+        item={item}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        liked={liked}
+        likeCount={likeCount}
+        onToggleLike={toggleLike}
+        busy={busy}
+      />
+    </>
+  );
+}
+</file>
+
+<file path="src/components/FeedLayout.tsx">
+import { Outlet } from 'react-router-dom';
+import { Sidebar } from './Sidebar';
+import { FollowSidebar } from './FollowSidebar';
+import { SearchBar } from './SearchBar';
+
+export function FeedLayout() {
+  return (
+    <div className="grid min-h-screen grid-cols-[auto_1fr_auto]">
+      <Sidebar />
+      <main className="min-w-0">
+        <div className="mx-auto w-full max-w-4xl px-6 py-8">
+          <Outlet />
+        </div>
+      </main>
+
+      <div className="hidden w-70 shrink-0 pr-6 pb-6 lg:block">
+        <div className="sticky top-0 flex max-h-[calc(100vh-1.5rem)] flex-col">
+          {/* Space above the search bar — nudge this value to taste */}
+          <div className="h-4" aria-hidden />
+          <SearchBar />
+          <div className="h-[45px]" aria-hidden />
+          <FollowSidebar />
+        </div>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="src/components/FollowSidebar.tsx">
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
+import { useAuth } from '../context/useAuth';
+import { followApi } from '../api/follow';
+import type { FollowSummary } from '../types/follow';
+import { resolveMediaUrl } from '../utils/mediaUrl';
+import { Button } from './ui/button';
+
+type Tab = 'following' | 'followers';
+
+function FollowRow({ person, onToggled }: { person: FollowSummary; onToggled: (id: string, nowFollowing: boolean) => void }) {
+  const [busy, setBusy] = useState(false);
+
+  const toggle = async () => {
+    if (busy) return;
+    setBusy(true);
+    const was = person.isFollowedByCurrentUser;
+    try {
+      if (was) await followApi.unfollow(person.id);
+      else await followApi.follow(person.id);
+      onToggled(person.id, !was);
+    } catch {
+      toast.error(was ? "Couldn't unfollow — try again." : "Couldn't follow — try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2.5 py-2">
+      <Link to={`/anglers/${person.id}`} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
+        {person.avatarUrl ? (
+          <img src={resolveMediaUrl(person.avatarUrl)} alt="" className="size-8 shrink-0 rounded-full object-cover" />
+        ) : (
+          <div className="size-8 shrink-0 rounded-full bg-muted" />
+        )}
+        <span className="truncate text-sm font-medium">{person.fullName ?? 'Angler'}</span>
+      </Link>
+      <Button
+        variant={person.isFollowedByCurrentUser ? 'outline' : 'default'}
+        size="sm"
+        disabled={busy}
+        onClick={toggle}
+        className="shrink-0"
+      >
+        {person.isFollowedByCurrentUser ? 'Following' : 'Follow'}
+      </Button>
+    </div>
+  );
+}
+
+export function FollowSidebar() {
+  const { user } = useAuth();
+  const [tab, setTab] = useState<Tab>('following');
+  const [people, setPeople] = useState<FollowSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    async function load() {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const res = tab === 'following'
+          ? await followApi.getFollowing(user!.id)
+          : await followApi.getFollowers(user!.id);
+        if (!cancelled) setPeople(res.items);
+      } catch {
+        if (!cancelled) setError("Couldn't load this list.");
+      } finally {
+        if (!cancelled) setIsLoading(false);
       }
     }
-    onUnauthorized?.();
-    const error: ApiError = { status: 401, message: 'Session expired. Please log in again.' };
-    throw error;
-  }
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
+    load();
+    return () => { cancelled = true; };
+  }, [tab, user]);
 
-  const isJson = response.headers.get('content-type')?.includes('application/json');
-  const body = isJson ? await response.json() : await response.text();
+  const handleToggled = (id: string, nowFollowing: boolean) => {
+    // Unfollowing from the "Following" tab removes them from the list;
+    // everywhere else we just flip the button state in place.
+    if (tab === 'following' && !nowFollowing) {
+      setPeople((prev) => prev.filter((p) => p.id !== id));
+    } else {
+      setPeople((prev) => prev.map((p) => (p.id === id ? { ...p, isFollowedByCurrentUser: nowFollowing } : p)));
+    }
+  };
 
-  if (!response.ok) {
-    const message =
-      body?.title ??
-      (body?.errors ? Object.values(body.errors).flat().join(' ') : null) ??
-      'Something went wrong.';
-    const error: ApiError = { status: response.status, message, details: body };
-    throw error;
-  }
+  return (
+        <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-2xl border border-border bg-card p-4">      <div className="mb-3 flex gap-1 rounded-full bg-muted p-1 text-sm">
+        <button
+          onClick={() => setTab('following')}
+          className={`flex-1 rounded-full py-1.5 font-medium transition-colors ${
+            tab === 'following' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+          }`}
+        >
+          Following
+        </button>
+        <button
+          onClick={() => setTab('followers')}
+          className={`flex-1 rounded-full py-1.5 font-medium transition-colors ${
+            tab === 'followers' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+          }`}
+        >
+          Followers
+        </button>
+      </div>
 
-  return body as T;
+      {isLoading && <p className="py-4 text-center text-sm text-muted-foreground">Loading…</p>}
+      {error && <p className="py-4 text-center text-sm text-destructive">{error}</p>}
+
+      {!isLoading && !error && people.length === 0 && (
+        <p className="py-4 text-center text-sm text-muted-foreground">
+          {tab === 'following' ? "You're not following anyone yet." : 'No followers yet.'}
+        </p>
+      )}
+
+      <div className="flex flex-col divide-y divide-border">
+        {people.map((p) => (
+          <FollowRow key={p.id} person={p} onToggled={handleToggled} />
+        ))}
+      </div>
+    </aside>
+  );
+}
+</file>
+
+<file path="src/components/PageHeader.tsx">
+import type { ReactNode } from 'react';
+
+
+/**
+ * Sticky page header used at the top of list-style pages (Feed, My Catches,
+ * Analytics, etc). Bleeds out to the edges of the <main> content column via
+ * negative margins, then re-applies the same padding so nothing shifts.
+ *
+ * `main` in Layout.tsx uses `px-6 py-8` — if that ever changes, update the
+ * -mx-6/-mt-8/px-6/pt-8 values below to match.
+ */
+export function PageHeader({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <div
+      className="sticky top-0 z-10 -mx-6 -mt-8 border-b rounded-2xl border-border px-6 pt-8 pb-4 backdrop-blur-sm"
+      style={{ backgroundColor: 'color-mix(in oklab, var(--color-paper) 92%, transparent)' }}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-heading text-2xl">{title}</h1>
+        </div>
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+</file>
+
+<file path="src/context/auth-context.ts">
+import { createContext } from 'react';
+import type { CurrentUser } from '../types/auth';
+
+interface RegisterPayload {
+  userName: string;
+  email: string;
+  fullName: string;
+  password: string;
 }
 
-export const api = {
-  get: <T>(path: string) => request<T>(path, { method: 'GET' }),
-  post: <T>(path: string, data?: unknown) =>
-    request<T>(path, { method: 'POST', body: data ? JSON.stringify(data) : undefined }),
-  put: <T>(path: string, data?: unknown) =>
-    request<T>(path, { method: 'PUT', body: data ? JSON.stringify(data) : undefined }),
-  patch: <T>(path: string, data?: unknown) =>
-    request<T>(path, { method: 'PATCH', body: data ? JSON.stringify(data) : undefined }),
-  delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
-};
+export interface AuthContextValue {
+  user: CurrentUser | null;
+  isAuthenticated: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  register: (payload: RegisterPayload) => Promise<void>;
+    googleLogin: (credential: string) => Promise<void>;   // add this
 
-export async function uploadFile<T>(path: string, formData: FormData, isRetry = false): Promise<T> {
-  const token = getToken();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: formData,
+  logout: () => void;
+  sessionExpiredMessage: string | null;
+  clearSessionExpiredMessage: () => void;
+  forgotPassword: (email: string) => Promise<void>;
+  resetPassword: (email: string, token: string, newPassword: string) => Promise<void>;
+}
+export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+</file>
+
+<file path="src/pages/auth/Login.tsx">
+import { useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useAuth } from '../../context/useAuth';
+import { CastDivider } from '../../components/CastDivider';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { AuthLayout } from '@/components/auth/AuthLayout';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
+
+const loginSchema = z.object({
+  email: z.string().min(1, 'Email is required').email('Enter a valid email'),
+  password: z.string().min(1, 'Password is required'),
+});
+
+type LoginValues = z.infer<typeof loginSchema>;
+
+export function Login() {
+  const { login, sessionExpiredMessage, clearSessionExpiredMessage } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const form = useForm<LoginValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: '', password: '' },
   });
 
-  if (response.status === 401) {
-    if (!isRetry) {
-      const newToken = await tryRefreshToken();
-      if (newToken) return uploadFile<T>(path, formData, true);
+  useEffect(() => {
+    return () => clearSessionExpiredMessage();
+  }, [clearSessionExpiredMessage]);
+
+  const from = (location.state as { from?: Location })?.from?.pathname ?? '/feed';
+
+  const onSubmit = async (values: LoginValues) => {
+    try {
+      await login(values.email, values.password);
+      navigate(from, { replace: true });
+    } catch (err) {
+      const message =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Something went wrong. Please try again.';
+      form.setError('root', { message });
     }
-    onUnauthorized?.();
-    throw { status: 401, message: 'Session expired.' } as ApiError;
-  }
+  };
 
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw { status: response.status, message: body?.title ?? 'Upload failed.', details: body } as ApiError;
-  }
+  return (
+    <AuthLayout>
+      <Card
+        className="border-white/40 backdrop-blur-xl"
+        style={{ backgroundColor: 'color-mix(in oklab, var(--color-surface) 70%, transparent)' }}
+      >
+        <CardHeader>
+          <CardTitle>Log in</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CastDivider />
+          {sessionExpiredMessage && (
+            <p
+              role="alert"
+              className="mb-4 border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              {sessionExpiredMessage}
+            </p>
+          )}
 
-  return response.status === 204 ? (undefined as T) : response.json();
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input type="email" autoComplete="email" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <Input type="password" autoComplete="current-password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <p className="text-right text-sm">
+                <Link to="/forgot-password" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
+                  Forgot password?
+                </Link>
+              </p>
+
+              {form.formState.errors.root && (
+                <p className="text-sm text-destructive" role="alert">
+                  {form.formState.errors.root.message}
+                </p>
+              )}
+
+              <Button type="submit" disabled={form.formState.isSubmitting} className="w-full">
+                {form.formState.isSubmitting ? 'Logging in…' : 'Log in'}
+              </Button>
+            </form>
+          </Form>
+
+          <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            or
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
+          <GoogleSignInButton onError={(message) => form.setError('root', { message })} />
+
+          <p className="mt-5 text-sm text-muted-foreground">
+            No account?{' '}
+            <Link to="/register" className="text-foreground underline underline-offset-4">
+              Register
+            </Link>
+          </p>
+        </CardContent>
+     </Card>
+    </AuthLayout>
+  );
+}
+</file>
+
+<file path="src/pages/catches/CatchDetail.tsx">
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams, Link } from 'react-router-dom';
+import { Heart } from 'lucide-react';
+import { catchesApi } from '../../api/catches';
+import type { Catch } from '../../types/catch';
+import { useAuth } from '../../context/useAuth';
+import { CastDivider } from '../../components/CastDivider';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { CommentSection } from '../../components/CommentSection';
+
+export function CatchDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [item, setItem] = useState<Catch | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [likeBusy, setLikeBusy] = useState(false);
+
+  useEffect(() => {
+    if (!id) return;
+    catchesApi.getById(id)
+      .then((data) => {
+        setItem(data);
+        setLiked(data.isLikedByCurrentUser);
+        setLikeCount(data.likeCount);
+      })
+     .catch((err) => {
+        console.error('Failed to load catch', id, err);
+        if (err?.response?.status === 403) setError("You don't have permission to view this catch.");
+        else if (err?.response?.status === 401) setError('Please log in to view this catch.');
+        else setError('Catch not found.');
+});
+  }, [id]);
+
+  const handleDelete = async () => {
+    if (!item || !confirm('Delete this catch? This cannot be undone.')) return;
+    await catchesApi.remove(item.id);
+    navigate('/catches');
+  };
+
+  const toggleLike = async () => {
+    if (!item || likeBusy) return;
+    setLikeBusy(true);
+    const wasLiked = liked;
+    setLiked(!wasLiked);
+    setLikeCount((c) => c + (wasLiked ? -1 : 1));
+
+    try {
+      if (wasLiked) await catchesApi.unlike(item.id);
+      else await catchesApi.like(item.id);
+    } catch {
+      setLiked(wasLiked);
+      setLikeCount((c) => c + (wasLiked ? 1 : -1));
+    } finally {
+      setLikeBusy(false);
+    }
+  };
+
+  if (error) return <p className="text-sm text-destructive">{error}</p>;
+  if (!item) return <p className="text-muted-foreground">Loading...</p>;
+
+  const isOwner = user?.id === item.userId;
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <Card>
+        <CardContent>
+          <Link to="/catches" className="text-sm text-muted-foreground hover:text-foreground">
+            ← Back
+          </Link>
+
+          {item.media.length > 0 && (
+            <div className="my-4 flex gap-2 overflow-x-auto">
+              {item.media.map((m) => (
+                <img
+                  key={m.id}
+                  src={resolveMediaUrl(m.mediaUrl)}
+                  alt={m.fileName ?? 'Catch photo'}
+                  className="h-45"
+                />
+              ))}
+            </div>
+          )}
+
+          <h1 className="font-heading text-2xl">{item.speciesName ?? 'Unknown species'}</h1>
+          <CastDivider />
+
+          <p className="font-mono text-lg">
+            {item.weight != null ? `${item.weight} kg` : '—'} · {item.length != null ? `${item.length} cm` : '—'}
+          </p>
+
+          <p className="text-muted-foreground">
+            📍 {item.locationName ?? 'Private spot'} &nbsp;·&nbsp; 📅 {new Date(item.catchDate).toLocaleDateString()}
+          </p>
+
+          {item.gearUsed && <p><strong>Gear:</strong> {item.gearUsed}</p>}
+          {item.baitUsed && <p><strong>Bait:</strong> {item.baitUsed}</p>}
+          {item.fishingMethod && <p><strong>Method:</strong> {item.fishingMethod}</p>}
+          {item.weatherConditions && <p><strong>Weather:</strong> {item.weatherConditions}</p>}
+          {item.notes && <p><strong>Notes:</strong> {item.notes}</p>}
+
+          <Button
+            variant="ghost"
+            onClick={toggleLike}
+            disabled={likeBusy}
+            className="mt-2 h-auto gap-1.5 p-0 text-sm normal-case tracking-normal text-brass hover:bg-transparent"
+          >
+            <Heart className={liked ? 'fill-rust text-rust' : 'text-brass'} />
+            {likeCount} likes
+          </Button>
+
+          <CommentSection catchId={item.id} />
+
+          {isOwner && (
+            <div className="mt-4 flex gap-3">
+              <Link to={`/catches/${item.id}/edit`}>
+                <Button variant="outline">Edit</Button>
+              </Link>
+              <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+</file>
+
+<file path="src/types/auth.ts">
+export interface AuthResponse {
+  token: string;
+  userId: string;
+  email: string;
+  fullName: string | null;
+  expiration: string;
 }
 
-export async function downloadFile(path: string, isRetry = false): Promise<{ blob: Blob; fileName: string }> {
-  const token = getToken();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+export interface DecodedToken {
+  sub: string;
+  email: string;
+  name: string;
+  exp: number;
+  // ASP.NET Identity writes role claims using the long ClaimTypes.Role URI,
+  // not a short "role" key — we check both when reading it back.
+  'http://schemas.microsoft.com/ws/2008/06/identity/claims/role'?: string | string[];
+  role?: string | string[];
+}
 
-  if (response.status === 401) {
-    if (!isRetry) {
-      const newToken = await tryRefreshToken();
-      if (newToken) return downloadFile(path, true);
-    }
-    onUnauthorized?.();
-    throw { status: 401, message: 'Session expired.' } as ApiError;
-  }
+export interface CurrentUser {
+  id: string;
+  email: string;
+  fullName: string | null;
+  roles: string[];
+}
 
-  if (!response.ok) {
-    throw { status: response.status, message: 'Export failed.' } as ApiError;
-  }
-
-  const disposition = response.headers.get('content-disposition');
-  const match = disposition?.match(/filename="?([^"]+)"?/);
-  const fileName = match?.[1] ?? 'export';
-
-  const blob = await response.blob();
-  return { blob, fileName };
+export interface AuthResponse {
+  token: string;
+  refreshToken: string;
+  userId: string;
+  email: string;
+  fullName: string | null;
+  expiration: string;
 }
 </file>
 
@@ -6897,6 +7145,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await api.post<AuthResponse>('/auth/login', { email, password });
     applyAuthResponse(res);
   };
+  const googleLogin = async (credential: string) => {
+    const res = await api.post<AuthResponse>('/auth/google', { credential });
+    applyAuthResponse(res);
+  };
 
   const register = async (payload: {
     userName: string;
@@ -6919,16 +7171,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearSession(false);
   };
 
-  return (
+  const forgotPassword = async (email: string) => {
+  await api.post('/auth/forgot-password', { email });
+  };
+
+  const resetPassword = async (email: string, token: string, newPassword: string) => {
+  await api.post('/auth/reset-password', { email, token, newPassword });
+  };
+
+
+  return (  
     <AuthContext.Provider
       value={{
         user,
         isAuthenticated: !!user,
         login,
         register,
+        googleLogin,
         logout,
         sessionExpiredMessage,
         clearSessionExpiredMessage: () => setSessionExpiredMessage(null),
+        forgotPassword,
+        resetPassword,
       }}
     >
       {children}
@@ -6937,40 +7201,202 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 </file>
 
-<file path="src/types/auth.ts">
-export interface AuthResponse {
-  token: string;
-  userId: string;
-  email: string;
-  fullName: string | null;
-  expiration: string;
+<file path="src/api/client.ts">
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(handler: () => void) {
+  onUnauthorized = handler;
 }
 
-export interface DecodedToken {
-  sub: string;
-  email: string;
-  name: string;
-  exp: number;
-  // ASP.NET Identity writes role claims using the long ClaimTypes.Role URI,
-  // not a short "role" key — we check both when reading it back.
-  'http://schemas.microsoft.com/ws/2008/06/identity/claims/role'?: string | string[];
-  role?: string | string[];
+let getToken: () => string | null = () => null;
+export function setTokenGetter(fn: () => string | null) {
+  getToken = fn;
 }
 
-export interface CurrentUser {
-  id: string;
-  email: string;
-  fullName: string | null;
-  roles: string[];
+let getRefreshToken: () => string | null = () => null;
+export function setRefreshTokenGetter(fn: () => string | null) {
+  getRefreshToken = fn;
 }
 
-export interface AuthResponse {
-  token: string;
-  refreshToken: string;
-  userId: string;
-  email: string;
-  fullName: string | null;
-  expiration: string;
+// Called after a successful silent refresh so AuthContext can persist
+// the new pair and update its state — client.ts doesn't own storage.
+let onTokenRefreshed: ((token: string, refreshToken: string) => void) | null = null;
+export function setTokenRefreshedHandler(handler: (token: string, refreshToken: string) => void) {
+  onTokenRefreshed = handler;
+}
+
+interface ApiError {
+  status: number;
+  message: string;
+  details?: unknown;
+}
+
+// Endpoints where a 401 means "this specific request failed" (bad credentials,
+// dead refresh token) rather than "your session died" — so skip the refresh
+// dance and never trigger the global sign-out flow for these.
+const NO_REFRESH_PATHS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/google'];
+// Some endpoints (e.g. AuthController's `Unauthorized("...")` returns) send a
+// bare JSON string, not `{ title: "..." }` — handle both shapes so messages
+// like "This account has been deactivated" actually reach the UI instead of
+// silently falling back to a generic one.
+async function parseErrorMessage(response: Response, fallback: string): Promise<{ message: string; details: unknown }> {
+  const body = await response.json().catch(() => null);
+
+  if (typeof body === 'string') return { message: body, details: body };
+
+  const message =
+    body?.title ??
+    (body?.errors ? Object.values(body.errors).flat().join(' ') : null) ??
+    fallback;
+
+  return { message, details: body };
+}
+
+// Coalesces concurrent 401s into a single refresh call instead of firing
+// one per in-flight request.
+let refreshPromise: Promise<string | null> | null = null;
+
+async function tryRefreshToken(): Promise<string | null> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return null;
+
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        onTokenRefreshed?.(data.token, data.refreshToken);
+        return data.token as string;
+      } catch {
+        return null;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+  }
+  return refreshPromise;
+}
+
+async function request<T>(
+  path: string,
+  options: RequestInit = {},
+  isRetry = false
+): Promise<T> {
+  const token = getToken();
+
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(options.headers || {}),
+  };
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (response.status === 401) {
+    const isNoRefreshPath = NO_REFRESH_PATHS.includes(path);
+
+    if (!isRetry && !isNoRefreshPath) {
+      const newToken = await tryRefreshToken();
+      if (newToken) return request<T>(path, options, true);
+    }
+
+    if (isNoRefreshPath) {
+      const { message, details } = await parseErrorMessage(response, 'Invalid email or password.');
+      throw { status: 401, message, details } as ApiError;
+    }
+
+    onUnauthorized?.();
+    throw { status: 401, message: 'Session expired. Please log in again.' } as ApiError;
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const isJson = response.headers.get('content-type')?.includes('application/json');
+
+  if (!response.ok) {
+    const { message, details } = isJson
+      ? await parseErrorMessage(response, 'Something went wrong.')
+      : { message: await response.text().catch(() => 'Something went wrong.'), details: null };
+    throw { status: response.status, message, details } as ApiError;
+  }
+
+  const body = isJson ? await response.json() : await response.text();
+  return body as T;
+}
+
+export const api = {
+  get: <T>(path: string) => request<T>(path, { method: 'GET' }),
+  post: <T>(path: string, data?: unknown) =>
+    request<T>(path, { method: 'POST', body: data ? JSON.stringify(data) : undefined }),
+  put: <T>(path: string, data?: unknown) =>
+    request<T>(path, { method: 'PUT', body: data ? JSON.stringify(data) : undefined }),
+  patch: <T>(path: string, data?: unknown) =>
+    request<T>(path, { method: 'PATCH', body: data ? JSON.stringify(data) : undefined }),
+  delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+};
+
+export async function uploadFile<T>(path: string, formData: FormData, isRetry = false): Promise<T> {
+  const token = getToken();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  if (response.status === 401) {
+    if (!isRetry) {
+      const newToken = await tryRefreshToken();
+      if (newToken) return uploadFile<T>(path, formData, true);
+    }
+    onUnauthorized?.();
+    throw { status: 401, message: 'Session expired.' } as ApiError;
+  }
+
+  if (!response.ok) {
+    const { message, details } = await parseErrorMessage(response, 'Upload failed.');
+    throw { status: response.status, message, details } as ApiError;
+  }
+
+  return response.status === 204 ? (undefined as T) : response.json();
+}
+
+export async function downloadFile(path: string, isRetry = false): Promise<{ blob: Blob; fileName: string }> {
+  const token = getToken();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (response.status === 401) {
+    if (!isRetry) {
+      const newToken = await tryRefreshToken();
+      if (newToken) return downloadFile(path, true);
+    }
+    onUnauthorized?.();
+    throw { status: 401, message: 'Session expired.' } as ApiError;
+  }
+
+  if (!response.ok) {
+    const { message, details } = await parseErrorMessage(response, 'Export failed.');
+    throw { status: response.status, message, details } as ApiError;
+  }
+
+  const disposition = response.headers.get('content-disposition');
+  const match = disposition?.match(/filename="?([^"]+)"?/);
+  const fileName = match?.[1] ?? 'export';
+
+  const blob = await response.blob();
+  return { blob, fileName };
 }
 </file>
 

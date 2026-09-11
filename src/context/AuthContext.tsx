@@ -81,6 +81,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await api.post<AuthResponse>('/auth/login', { email, password });
     applyAuthResponse(res);
   };
+  const googleLogin = async (credential: string) => {
+    const res = await api.post<AuthResponse>('/auth/google', { credential });
+    applyAuthResponse(res);
+  };
 
   const register = async (payload: {
     userName: string;
@@ -111,13 +115,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   await api.post('/auth/reset-password', { email, token, newPassword });
   };
 
-  return (
+
+  return (  
     <AuthContext.Provider
       value={{
         user,
         isAuthenticated: !!user,
         login,
         register,
+        googleLogin,
         logout,
         sessionExpiredMessage,
         clearSessionExpiredMessage: () => setSessionExpiredMessage(null),

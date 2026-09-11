@@ -13,6 +13,8 @@ export interface AuthContextValue {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
+    googleLogin: (credential: string) => Promise<void>;   // add this
+
   logout: () => void;
   sessionExpiredMessage: string | null;
   clearSessionExpiredMessage: () => void;

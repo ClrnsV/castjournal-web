@@ -31,8 +31,7 @@ interface ApiError {
 // Endpoints where a 401 means "this specific request failed" (bad credentials,
 // dead refresh token) rather than "your session died" — so skip the refresh
 // dance and never trigger the global sign-out flow for these.
-const NO_REFRESH_PATHS = ['/auth/login', '/auth/register', '/auth/refresh'];
-
+const NO_REFRESH_PATHS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/google'];
 // Some endpoints (e.g. AuthController's `Unauthorized("...")` returns) send a
 // bare JSON string, not `{ title: "..." }` — handle both shapes so messages
 // like "This account has been deactivated" actually reach the UI instead of

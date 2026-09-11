@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { AuthLayout } from '@/components/auth/AuthLayout';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 
 const loginSchema = z.object({
   email: z.string().min(1, 'Email is required').email('Enter a valid email'),
@@ -114,6 +115,17 @@ export function Login() {
               </Button>
             </form>
           </Form>
+
+          <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            or
+            <span className="h-px flex-1 bg-border" />
+          </div>
+          
+          <GoogleSignInButton
+            onSuccess={() => navigate(from, { replace: true })}
+            onError={(message) => form.setError('root', { message })}
+          />
 
           <p className="mt-5 text-sm text-muted-foreground">
             No account?{' '}

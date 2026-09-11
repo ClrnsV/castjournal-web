@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { AuthLayout } from '@/components/auth/AuthLayout';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
+
 
 const registerSchema = z.object({
   fullName: z.string().min(1, 'Full name is required'),
@@ -124,7 +126,18 @@ export function Register() {
               </Button>
             </form>
           </Form>
+          
+          <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            or
+            <span className="h-px flex-1 bg-border" />
+          </div>
 
+          <GoogleSignInButton
+            text="signup_with"
+            onSuccess={() => navigate('/feed')}
+            onError={(message) => form.setError('root', { message })}
+          />
           <p className="mt-5 text-sm text-muted-foreground">
             Already have an account?{' '}
             <Link to="/login" className="text-foreground underline underline-offset-4">
