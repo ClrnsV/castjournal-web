@@ -9,6 +9,7 @@ import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CommentSection } from '../../components/CommentSection';
+import { ShareButton } from '../../components/ShareButton';
 
 export function CatchDetail() {
   const { id } = useParams();
@@ -102,16 +103,19 @@ export function CatchDetail() {
           {item.fishingMethod && <p><strong>Method:</strong> {item.fishingMethod}</p>}
           {item.weatherConditions && <p><strong>Weather:</strong> {item.weatherConditions}</p>}
           {item.notes && <p><strong>Notes:</strong> {item.notes}</p>}
+          <div className="mt-2 flex items-center gap-4">
+            <Button
+              variant="ghost"
+              onClick={toggleLike}
+              disabled={likeBusy}
+              className="h-auto gap-1.5 p-0 text-sm normal-case tracking-normal text-brass hover:bg-transparent"
+            >
+              <Heart className={liked ? 'fill-rust text-rust' : 'text-brass'} />
+              {likeCount} likes
+            </Button>
 
-          <Button
-            variant="ghost"
-            onClick={toggleLike}
-            disabled={likeBusy}
-            className="mt-2 h-auto gap-1.5 p-0 text-sm normal-case tracking-normal text-brass hover:bg-transparent"
-          >
-            <Heart className={liked ? 'fill-rust text-rust' : 'text-brass'} />
-            {likeCount} likes
-          </Button>
+            <ShareButton catchId={item.id} className="h-auto gap-1.5 p-0 text-sm normal-case tracking-normal text-muted-foreground hover:bg-transparent hover:text-foreground" />
+          </div>
 
           <CommentSection catchId={item.id} />
 

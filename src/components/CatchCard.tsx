@@ -9,6 +9,7 @@ import { resolveMediaUrl } from '../utils/mediaUrl';
 import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { PostDialog } from './PostDialog';
+import { ShareButton } from './ShareButton';
 
 function StatBox({ label, value }: { label: string; value: string }) {
   return (
@@ -125,6 +126,8 @@ export function CatchCard({ item }: { item: Catch }) {
               <MessageCircle className="size-4" />
               Comments
             </Button>
+
+            <ShareButton catchId={item.id} />
           </div>
         </CardContent>
       </Card>
