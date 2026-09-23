@@ -5,7 +5,7 @@ import { SearchBar } from './SearchBar';
 
 export function FeedLayout() {
   return (
-    <div className="grid min-h-screen grid-cols-[auto_1fr_auto]">
+    <div className="grid min-h-screen grid-cols-1 md:grid-cols-[auto_1fr_auto]">
       <Sidebar />
       <main className="min-w-0">
         <div className="mx-auto w-full max-w-4xl px-6 py-8">

@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 webUI.xml
 repomix-output.xml
+repomix-output.xml
+frontend.xml
+repomix-output.xml

@@ -11,6 +11,7 @@ interface GoogleSignInButtonProps {
 
 export function GoogleSignInButton({ onSuccess, onError, text = 'signin_with' }: GoogleSignInButtonProps) {
   const { googleLogin } = useAuth();
+  const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLDivElement>(null);
   const hasInitialized = useRef(false);   // add this guard
 
@@ -28,6 +29,8 @@ export function GoogleSignInButton({ onSuccess, onError, text = 'signin_with' }:
     const renderButton = () => {
       if (cancelled || !window.google || !buttonRef.current) return;
       hasInitialized.current = true;      // add this, right before initializing
+
+      const width = Math.min(320, containerRef.current?.offsetWidth ?? 320);
 
       window.google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
@@ -51,7 +54,7 @@ export function GoogleSignInButton({ onSuccess, onError, text = 'signin_with' }:
         size: 'large',
         text,
         shape: 'rectangular',
-        width: 320,
+        width,
       });
     };
 
@@ -72,5 +75,9 @@ export function GoogleSignInButton({ onSuccess, onError, text = 'signin_with' }:
     };
   }, [googleLogin, onSuccess, onError, text]);
 
-  return <div ref={buttonRef} />;
+  return (
+    <div ref={containerRef} className="flex w-full justify-center">
+    <div ref={buttonRef} />
+    </div>
+  );
 }

@@ -47,8 +47,8 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         <div className="pointer-events-none absolute top-1/3 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-[color:var(--color-forest)]/10 blur-3xl" />
 
         <div className="relative w-full max-w-sm">
-          <Link to="/" className="wordmark mb-2 flex items-center justify-center gap-2 text-5xl">
-            <img src="/logo-icon.svg" alt="" className="h-17 w-auto" />
+          <Link to="/" className="wordmark mb-2 flex items-center justify-center gap-2 text-3xl sm:text-5xl">
+            <img src="/logo-icon.svg" alt="" className="h-10 w-auto sm:h-17" />
             CastJournal
           </Link>
           <p className="mb-6 text-center text-sm text-muted-foreground">

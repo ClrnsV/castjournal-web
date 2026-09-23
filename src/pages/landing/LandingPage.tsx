@@ -30,14 +30,14 @@ export function LandingPage() {
 
   return (
     <div className="min-h-screen overflow-x-hidden">
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-[color:var(--color-paper)]/95 px-6 py-4 backdrop-blur-sm lg:px-12">
-        <Link to="/" className="wordmark flex items-center gap-1.5 text-2xl">
-          <img src="/logo-icon.svg" alt="" className="h-8 w-auto" />
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-[color:var(--color-paper)]/95 px-4 py-3 backdrop-blur-sm sm:px-6 sm:py-4 lg:px-12">
+        <Link to="/" className="wordmark flex items-center gap-1 text-lg sm:gap-1.5 sm:text-2xl">
+          <img src="/logo-icon.svg" alt="" className="h-6 w-auto sm:h-8" />
           CastJournal
         </Link>
-        <div className="flex items-center gap-2">
-          <Link to="/login"><Button variant="ghost">Log in</Button></Link>
-          <Link to="/register"><Button>Sign up</Button></Link>
+       <div className="flex items-center gap-1 sm:gap-2">
+          <Link to="/login"><Button variant="ghost" size="sm" className="sm:h-9 sm:px-4 sm:text-sm">Log in</Button></Link>
+          <Link to="/register"><Button size="sm" className="sm:h-9 sm:px-4 sm:text-sm">Sign up</Button></Link>
         </div>
       </header>
 

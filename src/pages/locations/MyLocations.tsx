@@ -210,13 +210,13 @@ export function MyLocations() {
       <div className="flex flex-col gap-3">
         {locations.map((l) => (
           <Card interactive key={l.id}>
-            <CardContent className="flex flex-row items-center justify-between">
-              <div>
-                <strong>📍 {l.name}</strong>
+            <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <strong className="block break-words">📍 {l.name}</strong>
                 {l.description && <div className="text-sm text-muted-foreground">{l.description}</div>}
               </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground">{l.isPublic ? 'Public' : 'Private'}</span>
+               <div className="flex items-center gap-3 shrink-0">
++               <span className="text-sm text-muted-foreground whitespace-nowrap">{l.isPublic ? 'Public' : 'Private'}</span>
                 <Button variant="outline" size="sm" onClick={() => startEdit(l)}>Edit</Button>
                 <Button variant="destructive" size="sm" onClick={() => handleDelete(l)}>Delete</Button>
               </div>
