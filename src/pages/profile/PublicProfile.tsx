@@ -36,11 +36,14 @@ export function PublicProfile() {
   setBusy(true);
   const was = isFollowing;
   setIsFollowing(!was);
+  setProfile((p) => (p ? { ...p, followerCount: p.followerCount + (was ? -1 : 1) } : p));
+
   try {
     if (was) await followApi.unfollow(userId);
     else await followApi.follow(userId);
   } catch {
     setIsFollowing(was);
+    setProfile((p) => (p ? { ...p, followerCount: p.followerCount + (was ? 1 : -1) } : p));
     toast.error(was ? "Couldn't unfollow — try again." : "Couldn't follow — try again.");
   } finally {
     setBusy(false);
