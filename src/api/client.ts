@@ -41,14 +41,16 @@ async function parseErrorMessage(response: Response, fallback: string): Promise<
 
   if (typeof body === 'string') return { message: body, details: body };
 
-  const message =
-    body?.title ??
-    (body?.errors ? Object.values(body.errors).flat().join(' ') : null) ??
-    fallback;
+  // Prefer the specific field errors (ModelState) over the generic ProblemDetails title
+  const validationMessage =
+    body?.errors && typeof body.errors === 'object'
+      ? Object.values(body.errors).flat().join(' ')
+      : null;
+
+  const message = validationMessage || body?.title || fallback;
 
   return { message, details: body };
 }
-
 // Coalesces concurrent 401s into a single refresh call instead of firing
 // one per in-flight request.
 let refreshPromise: Promise<string | null> | null = null;
@@ -118,8 +120,8 @@ async function request<T>(
     return undefined as T;
   }
 
-  const isJson = response.headers.get('content-type')?.includes('application/json');
-
+  const isJson = /json/i.test(response.headers.get('content-type') ?? '');
+  
   if (!response.ok) {
     const { message, details } = isJson
       ? await parseErrorMessage(response, 'Something went wrong.')
