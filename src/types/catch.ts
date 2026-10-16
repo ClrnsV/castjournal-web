@@ -26,6 +26,7 @@ export interface Catch {
   isPublic: boolean;
   createdAt: string;
   likeCount: number;
+  commentCount: number;
   isLikedByCurrentUser: boolean;
   media: CatchMedia[];
 }

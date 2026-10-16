@@ -25,6 +25,7 @@ function StatBox({ label, value }: { label: string; value: string }) {
 export function CatchCard({ item }: { item: Catch }) {
   const [liked, setLiked] = useState(item.isLikedByCurrentUser);
   const [likeCount, setLikeCount] = useState(item.likeCount);
+  const [commentCount, setCommentCount] = useState(item.commentCount ?? 0);
   const [busy, setBusy] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -124,7 +125,7 @@ export function CatchCard({ item }: { item: Catch }) {
               className="px-2 text-muted-foreground hover:text-foreground"
             >
               <MessageCircle className="size-4" />
-              Comments
+              Comments ({commentCount})
             </Button>
 
             <ShareButton catchId={item.id} />
@@ -140,6 +141,7 @@ export function CatchCard({ item }: { item: Catch }) {
         likeCount={likeCount}
         onToggleLike={toggleLike}
         busy={busy}
+        onCommentCountChange={setCommentCount} 
       />
     </>
   );

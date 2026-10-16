@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { commentsApi } from '../api/comments';
 import type { Comment } from '../types/comment';
 import { resolveMediaUrl } from '../utils/mediaUrl';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
+
 
 function CommentRow({
   comment,
@@ -104,12 +105,26 @@ function CommentRow({
   );
 }
 
-export function CommentSection({ catchId }: { catchId: string }) {
+export function CommentSection({
+  catchId,
+  onCountChange,
+}: {
+  catchId: string;
+  /** Called with the authoritative total whenever it changes (load, add, delete). */
+  onCountChange?: (count: number) => void;
+}) {
   const [comments, setComments] = useState<Comment[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newComment, setNewComment] = useState('');
   const [posting, setPosting] = useState(false);
+
+  // Keep the latest callback in a ref so the load effect doesn't re-run when the parent re-renders
+  const onCountChangeRef = useRef(onCountChange);
+  useEffect(() => {
+    onCountChangeRef.current = onCountChange;
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -119,7 +134,11 @@ export function CommentSection({ catchId }: { catchId: string }) {
       setError(null);
       try {
         const res = await commentsApi.getForCatch(catchId);
-        if (!cancelled) setComments(res.items);
+        if (!cancelled) {
+          setComments(res.items);
+          setTotalCount(res.totalCount);
+          onCountChangeRef.current?.(res.totalCount);
+        }
       } catch {
         if (!cancelled) setError("Couldn't load comments.");
       } finally {
@@ -140,6 +159,9 @@ export function CommentSection({ catchId }: { catchId: string }) {
     try {
       const created = await commentsApi.add(catchId, content);
       setComments((prev) => [...prev, created]);
+      const next = totalCount + 1;
+      setTotalCount(next);
+      onCountChange?.(next);
       setNewComment('');
     } catch {
       toast.error("Couldn't post your comment — try again.");
@@ -154,11 +176,14 @@ export function CommentSection({ catchId }: { catchId: string }) {
 
   const handleDeleted = (id: string) => {
     setComments((prev) => prev.filter((c) => c.id !== id));
+    const next = Math.max(0, totalCount - 1);
+    setTotalCount(next);
+    onCountChange?.(next);
   };
 
   return (
     <div className="mt-6">
-      <h2 className="font-heading text-lg">Comments {comments.length > 0 && `(${comments.length})`}</h2>
+      <h2 className="font-heading text-lg">Comments {totalCount > 0 && `(${totalCount})`}</h2>
 
       <div className="mt-2 flex gap-2">
         <Textarea
