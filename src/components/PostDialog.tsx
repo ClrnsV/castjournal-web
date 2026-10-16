@@ -13,6 +13,7 @@ export function PostDialog({
   likeCount,
   onToggleLike,
   busy,
+  onCommentCountChange, 
 }: {
   item: Catch;
   open: boolean;
@@ -21,6 +22,7 @@ export function PostDialog({
   likeCount: number;
   onToggleLike: () => void;
   busy: boolean;
+  onCommentCountChange?: (count: number) => void;
 }) {
   const photo = item.media[0];
 
@@ -62,8 +64,8 @@ export function PostDialog({
             {likeCount}
             </Button>
 
-            <CommentSection catchId={item.id} />
-        </DialogContent>
+            <CommentSection catchId={item.id} onCountChange={onCommentCountChange} />        
+          </DialogContent>
     </Dialog>
   );
 }
