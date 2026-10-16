@@ -12,15 +12,25 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 
+const coordinate = (label: string, min: number, max: number) =>
+  z
+    .string()
+    .trim()
+    .min(1, `${label} is required`)
+    .refine((v) => Number.isFinite(Number(v)), `${label} must be a valid number`)
+    .refine((v) => {
+      const n = Number(v);
+      return n >= min && n <= max;
+    }, `${label} must be between ${min} and ${max}`);
+
 const locationSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
+  name: z.string().trim().min(1, 'Name is required'),
   description: z.string(),
-  latitude: z.string(),
-  longitude: z.string(),
+  latitude: coordinate('Latitude', -90, 90),
+  longitude: coordinate('Longitude', -180, 180),
   waterType: z.enum(['Freshwater', 'Saltwater', 'Brackish']),
   isPublic: z.boolean(),
 });
-
 type LocationValues = z.infer<typeof locationSchema>;
 
 const emptyValues: LocationValues = {
@@ -66,15 +76,14 @@ export function MyLocations() {
   };
 
   const onSubmit = async (values: LocationValues) => {
-    const payload = {
-      name: values.name,
-      description: values.description || null,
-      latitude: parseFloat(values.latitude) || 0,
-      longitude: parseFloat(values.longitude) || 0,
-      waterType: values.waterType,
-      isPublic: values.isPublic,
-    };
-
+   const payload = {
+    name: values.name.trim(),
+    description: values.description || null,
+    latitude: Number(values.latitude),
+    longitude: Number(values.longitude),
+    waterType: values.waterType,
+    isPublic: values.isPublic,
+  };  
     try {
       if (editingId) {
         await locationsApi.update(editingId, payload);
@@ -141,7 +150,7 @@ export function MyLocations() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Latitude</FormLabel>
-                        <FormControl><Input type="number" step="any" {...field} /></FormControl>
+                          <FormControl><Input type="number" step="any" placeholder="-90 to 90" {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -152,7 +161,7 @@ export function MyLocations() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Longitude</FormLabel>
-                        <FormControl><Input type="number" step="any" {...field} /></FormControl>
+                          <FormControl><Input type="number" step="any" placeholder="-180 to 180" {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
