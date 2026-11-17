@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
+import { PasswordInput } from '@/components/ui/password-input';
 
 const loginSchema = z.object({
   email: z.string().min(1, 'Email is required').email('Enter a valid email'),
@@ -90,9 +91,9 @@ export function Login() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input type="password" autoComplete="current-password" {...field} />
-                    </FormControl>
+                   <FormControl>
+                      <PasswordInput autoComplete="current-password" {...field} />
+                   </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
